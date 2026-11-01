@@ -120,11 +120,8 @@ func (c *Client) Run(ctx context.Context) error {
 			return ctx.Err()
 		}
 		c.cfg.Log.Log(logx.RelayDisconnect, logx.Fields{Reason: reasonOf(err), DurationMs: time.Since(started).Milliseconds(), Attempt: attempt})
-		if errors.Is(err, errRevoked) || errors.Is(err, errReset) {
-			backoff = c.cfg.MinBackoff
-			continue
-		}
-		if time.Since(started) > stableAfter {
+		// A revoke or reset still waits: a hostile relay must not be able to make the Helper spin.
+		if errors.Is(err, errRevoked) || errors.Is(err, errReset) || time.Since(started) > stableAfter {
 			backoff = c.cfg.MinBackoff
 		}
 		// Full jitter: wait a random time up to the current backoff.
