@@ -140,6 +140,19 @@ func TestPairingRefusesBadRelayNonce(t *testing.T) {
 	}
 }
 
+func TestRelayErrorCode(t *testing.T) {
+	for msg, want := range map[string]string{
+		`{"type":"error","code":"bad_auth"}`:                    "relay_error_bad_auth",
+		`{"type":"error","code":"Key sk-ant-x is not allowed"}`: "bad_relay_error",
+		`{"type":"error","code":"a/b"}`:                         "bad_relay_error",
+		`{"type":"error"}`:                                      "bad_relay_error",
+	} {
+		if got := string(relayError([]byte(msg))); got != want {
+			t.Errorf("%s: %q, want %q", msg, got, want)
+		}
+	}
+}
+
 func TestDisplayName(t *testing.T) {
 	for in, want := range map[string]string{
 		"  Synthetic Firm LLP ": "Synthetic Firm LLP",
