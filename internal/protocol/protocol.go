@@ -87,7 +87,7 @@ type Welcome struct {
 // ProviderInfo is one provider's state in Hello.
 type ProviderInfo struct {
 	ID            string `json:"id"`
-	PinnedVersion string `json:"pinnedVersion"`
+	PinnedVersion string `json:"pinnedVersion,omitempty"` // empty before the provider is installed
 	SignedIn      bool   `json:"signedIn"`
 	AccountType   string `json:"accountType,omitempty"`
 	Org           string `json:"org,omitempty"`
