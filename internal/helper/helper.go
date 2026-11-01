@@ -30,6 +30,8 @@ type Helper struct {
 	Version  string
 	Ring     string
 	Log      *logx.Logger
+	// TurnTimeout bounds one turn; zero means DefaultTurnTimeout.
+	TurnTimeout time.Duration
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
@@ -37,6 +39,10 @@ type Helper struct {
 
 // MaxConcurrentTurns is one in this slice: one provider profile, one turn at a time.
 const MaxConcurrentTurns = 1
+
+// DefaultTurnTimeout ends a turn that hangs (for example a stalled provider connection), so it can't keep the
+// Helper busy indefinitely.
+const DefaultTurnTimeout = 15 * time.Minute
 
 // Profile is the paired user's Claude Code profile directory. User ids are validated by the pairing record.
 func (h *Helper) Profile(rec pairing.Record) driver.Profile {
@@ -140,7 +146,11 @@ func (h *Helper) HandleTurn(ctx context.Context, rec pairing.Record, t protocol.
 		emit(protocol.Error(protocol.ClassTransient, "busy"))
 		return
 	}
-	rctx, cancel := context.WithCancel(ctx)
+	timeout := h.TurnTimeout
+	if timeout <= 0 {
+		timeout = DefaultTurnTimeout
+	}
+	rctx, cancel := context.WithTimeout(ctx, timeout)
 	h.running[c.TicketID] = cancel
 	h.mu.Unlock()
 	defer func() {

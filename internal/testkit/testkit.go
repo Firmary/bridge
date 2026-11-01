@@ -27,6 +27,8 @@ const (
 	EmailCanary   = "email-canary-44@example.com"
 	OrgCanary     = "OrgCanary0a"
 	EnvCanary     = "sk-ant-oat01-ENV_CANARY_e6"
+	// SlowPrompt makes the fake claude sleep for a minute before replying.
+	SlowPrompt = "SLOW_TURN_PROMPT_3b"
 )
 
 // Release is a fake Anthropic release bucket for one version and platform.
@@ -87,7 +89,7 @@ func NewRelease(t *testing.T, version, platform string, bin []byte) *Release {
 
 // FakeClaude returns a POSIX shell script standing in for `claude`. `auth status` prints a signed-in Team login;
 // a run records its environment, arguments and stdin under dumpDir, writes a canary to stderr, and streams a reply
-// that contains OutputCanary.
+// that contains OutputCanary. A prompt containing SlowPrompt sleeps for a minute first.
 func FakeClaude(dumpDir string) []byte {
 	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 	status := `{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","email":"` + EmailCanary +
@@ -107,6 +109,7 @@ func FakeClaude(dumpDir string) []byte {
 	b.WriteString(`for a in "$@"; do printf '[%s]\n' "$a"; done > ` + q(filepath.Join(dumpDir, "args")) + "\n")
 	b.WriteString("pwd > " + q(filepath.Join(dumpDir, "cwd")) + "\n")
 	b.WriteString("cat > " + q(filepath.Join(dumpDir, "stdin")) + "\n")
+	b.WriteString("if grep -q " + SlowPrompt + " " + q(filepath.Join(dumpDir, "stdin")) + "; then sleep 60; fi\n")
 	b.WriteString("echo " + q(StderrCanary+" raw provider error text") + " >&2\n")
 	for _, l := range lines {
 		b.WriteString("printf '%s\\n' " + q(l) + "\n")

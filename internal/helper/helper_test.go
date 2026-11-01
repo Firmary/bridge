@@ -50,15 +50,30 @@ func terminal(t *testing.T, r *fakerelay.Relay, turnID string) []protocol.Stream
 	}
 }
 
-// TestHelperAgainstFakeRelay pairs by code match, says hello, streams a turn, refuses bad tickets, reconnects,
-// handles revoke, and then checks that nothing the Helper must never log reached its data directory.
-func TestHelperAgainstFakeRelay(t *testing.T) {
-	const version = "2.1.304"
+// rig is a Helper with a fake Claude Code release, connected to a fake relay and paired.
+type rig struct {
+	r                          *fakerelay.Relay
+	h                          *helper.Helper
+	log                        *logx.Logger
+	data, keyPath, pairingPath string
+	shown                      chan string
+	code                       string
+	hello                      protocol.Hello
+	dev                        fakerelay.Device
+	cancel                     context.CancelFunc
+	runDone                    chan struct{}
+}
+
+const pinVersion = "2.1.304"
+
+// startRig starts the Helper and pairs it by code match. configure, if set, adjusts the Helper before it starts.
+func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
+	t.Helper()
 	platform := "linux-x64"
 	data := t.TempDir()
 	dump := t.TempDir()
 
-	rel := testkit.NewRelease(t, version, platform, testkit.FakeClaude(dump))
+	rel := testkit.NewRelease(t, pinVersion, platform, testkit.FakeClaude(dump))
 	environ := func() []string {
 		return append(os.Environ(), "ANTHROPIC_API_KEY="+testkit.EnvCanary, "CLAUDE_CODE_OAUTH_TOKEN="+testkit.EnvCanary)
 	}
@@ -67,7 +82,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pin := driver.Pin{Version: version, SHA256: map[string]string{platform: rel.SHA256}}
+	pin := driver.Pin{Version: pinVersion, SHA256: map[string]string{platform: rel.SHA256}}
 	if err := drv.Ensure(context.Background(), pin); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +91,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	t.Cleanup(r.Close)
 
 	log, err := logx.Open(filepath.Join(data, "logs"))
 	if err != nil {
@@ -84,33 +99,53 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	}
 	h := &helper.Helper{Driver: drv, Pin: pin, Verifier: ticket.NewVerifier([]ed25519.PublicKey{r.TicketPub}, nil),
 		DataDir: data, Version: "0.0.0-test", Ring: "internal", Log: log}
-	shown := make(chan string, 4)
-	pairingPath := filepath.Join(data, "pairing.json")
-	keyPath := filepath.Join(data, "device.key")
-	client, err := relay.New(relay.Config{URL: r.URL, Env: "local", KeyPath: keyPath, PairingPath: pairingPath,
-		HelperVersion: "0.0.0-test", Log: log, Handler: h, ShowPairingCode: func(c string) { shown <- c },
+	if configure != nil {
+		configure(h)
+	}
+	g := &rig{r: r, h: h, log: log, data: data, shown: make(chan string, 4), runDone: make(chan struct{}),
+		pairingPath: filepath.Join(data, "pairing.json"), keyPath: filepath.Join(data, "device.key")}
+	client, err := relay.New(relay.Config{URL: r.URL, Env: "local", KeyPath: g.keyPath, PairingPath: g.pairingPath,
+		HelperVersion: "0.0.0-test", Log: log, Handler: h, ShowPairingCode: func(c string) { g.shown <- c },
 		MinBackoff: 10 * time.Millisecond, MaxBackoff: 50 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	runDone := make(chan struct{})
-	go func() { client.Run(ctx); close(runDone) }()
+	g.cancel = cancel
+	go func() { client.Run(ctx); close(g.runDone) }()
+	t.Cleanup(g.stop)
 
 	// Pairing: the code the Helper shows is the code Firmary computes for the pending key.
-	code := recv(t, shown, "pairing code")
-	if relayCode := recv(t, r.Codes, "relay code"); relayCode != code {
-		t.Fatalf("helper shows %s, relay computed %s", code, relayCode)
+	g.code = recv(t, g.shown, "pairing code")
+	if relayCode := recv(t, r.Codes, "relay code"); relayCode != g.code {
+		t.Fatalf("helper shows %s, relay computed %s", g.code, relayCode)
 	}
-	if !r.Confirm(code) {
+	if !r.Confirm(g.code) {
 		t.Fatal("confirm failed")
 	}
-	hello := recv(t, r.Hellos, "hello")
+	g.hello = recv(t, r.Hellos, "hello")
+	g.dev, _ = r.WaitConnected(ctx)
+	return g
+}
+
+// stop stops the Helper and closes its log. It is safe to call more than once.
+func (g *rig) stop() {
+	g.cancel()
+	<-g.runDone
+	g.log.Close()
+}
+
+// TestHelperAgainstFakeRelay pairs by code match, says hello, streams a turn, refuses bad tickets, reconnects,
+// handles revoke, and then checks that nothing the Helper must never log reached its data directory.
+func TestHelperAgainstFakeRelay(t *testing.T) {
+	const version = pinVersion
+	g := startRig(t, nil)
+	r, data, keyPath, pairingPath, shown, code, dev := g.r, g.data, g.keyPath, g.pairingPath, g.shown, g.code, g.dev
+	hello := g.hello
 	p := hello.Providers[0]
 	if p.ID != "claude-code" || !p.SignedIn || p.AccountType != "team" || p.PinnedVersion != version || hello.Ring != "internal" {
 		t.Fatalf("hello %+v", hello)
 	}
-	dev, _ := r.WaitConnected(ctx)
 	if rec, _ := pairing.Load(pairingPath); rec == nil || rec.UserID != dev.UserID {
 		t.Fatalf("pairing record %+v", rec)
 	}
@@ -175,9 +210,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 		t.Fatal("device key kept after revoke")
 	}
 
-	cancel()
-	<-runDone
-	log.Close()
+	g.stop()
 
 	// Never-log: scan everything the Helper wrote (except the provider binary itself, which is the fake script).
 	var written strings.Builder
@@ -199,5 +232,37 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	}
 	if !strings.Contains(logs, `"outputTokens":3`) || !strings.Contains(logs, `"reason":"prompt_hash_mismatch"`) {
 		t.Errorf("log metadata missing:\n%s", logs)
+	}
+}
+
+// TestDroppedConnectionCancelsTurn: when the connection drops during a turn, the turn is cancelled and the Helper
+// reconnects at once instead of waiting for the turn to finish. A turn that runs past the Helper's deadline ends
+// with a turn_timeout error.
+func TestDroppedConnectionCancelsTurn(t *testing.T) {
+	g := startRig(t, func(h *helper.Helper) { h.TurnTimeout = 2 * time.Second })
+	r := g.r
+
+	// The fake claude sleeps for a minute on this prompt; the deadline ends it after 2 s.
+	c := r.Claims(g.dev, pinVersion, "", testkit.SlowPrompt)
+	if err := r.SendTurn(c, "", testkit.SlowPrompt); err != nil {
+		t.Fatal(err)
+	}
+	evs := terminal(t, r, c.TicketID)
+	if last := evs[len(evs)-1]; last.T != protocol.EvError || last.Pattern != "turn_timeout" {
+		t.Fatalf("slow turn ended with %+v, want turn_timeout", evs)
+	}
+
+	// Drop the connection half a second into another slow turn: hello must come again well before the turn
+	// (or its deadline) would have ended.
+	c2 := r.Claims(g.dev, pinVersion, "", testkit.SlowPrompt+" again")
+	if err := r.SendTurn(c2, "", testkit.SlowPrompt+" again"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(500 * time.Millisecond)
+	dropped := time.Now()
+	r.Drop()
+	recv(t, r.Hellos, "hello after drop")
+	if d := time.Since(dropped); d > time.Second {
+		t.Fatalf("hello came %v after the drop; the running turn held the reconnect", d)
 	}
 }
