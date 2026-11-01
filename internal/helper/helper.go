@@ -63,6 +63,7 @@ func (h *Helper) Hello(ctx context.Context, rec pairing.Record) protocol.Hello {
 		Ring:          h.Ring,
 		Providers: []protocol.ProviderInfo{{
 			ID: h.Driver.ID(), PinnedVersion: st.Installed, SignedIn: st.SignedIn, AccountType: st.AccountType, Org: st.Org,
+			OrgID: st.OrgID,
 		}},
 		// Consent screens arrive with the setup slice; until then nothing beyond revision 0 is accepted.
 		AcceptedConsentRevision: 0,
@@ -122,6 +123,9 @@ func (h *Helper) check(ctx context.Context, rec pairing.Record, t protocol.Turn)
 		return c, st, protocol.ClassAuth, "not_signed_in"
 	case !slices.Contains(c.AccountTypes, st.AccountType):
 		return c, st, protocol.ClassPolicy, "account_type_not_allowed"
+	case c.ProviderOrgIDs != nil && (st.OrgID == "" || !slices.Contains(c.ProviderOrgIDs, st.OrgID)):
+		// Present means "only these provider organisations"; an empty list allows none.
+		return c, st, protocol.ClassPolicy, "provider_org_not_allowed"
 	}
 	return c, st, "", ""
 }

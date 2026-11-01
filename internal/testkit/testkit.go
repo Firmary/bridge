@@ -26,7 +26,9 @@ const (
 	StderrCanary  = "STDERR_CANARY_5d10"
 	EmailCanary   = "email-canary-44@example.com"
 	OrgCanary     = "OrgCanary0a"
-	EnvCanary     = "sk-ant-oat01-ENV_CANARY_e6"
+	// OrgID is the provider organisation id the fake claude reports.
+	OrgID     = "0f6c2b1e-5d4a-4c3b-9a28-7e1f0d9c8b7a"
+	EnvCanary = "sk-ant-oat01-ENV_CANARY_e6"
 	// SlowPrompt makes the fake claude sleep for a minute before replying.
 	SlowPrompt = "SLOW_TURN_PROMPT_3b"
 )
@@ -93,7 +95,7 @@ func NewRelease(t *testing.T, version, platform string, bin []byte) *Release {
 func FakeClaude(dumpDir string) []byte {
 	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 	status := `{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","email":"` + EmailCanary +
-		`","orgId":"org-1","orgName":"` + OrgCanary + `","subscriptionType":"team"}`
+		`","orgId":"` + OrgID + `","orgName":"` + OrgCanary + `","subscriptionType":"team"}`
 	lines := []string{
 		`{"type":"system","subtype":"init","model":"claude-sonnet-4-5","session_id":"sess-1","tools":[]}`,
 		`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","unifiedWindows":{"five_hour":{"utilization":0.25,"resetsAt":1800000000}}}}`,

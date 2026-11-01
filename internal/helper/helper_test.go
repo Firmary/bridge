@@ -143,7 +143,8 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	r, data, keyPath, pairingPath, shown, code, dev := g.r, g.data, g.keyPath, g.pairingPath, g.shown, g.code, g.dev
 	hello := g.hello
 	p := hello.Providers[0]
-	if p.ID != "claude-code" || !p.SignedIn || p.AccountType != "team" || p.PinnedVersion != version || hello.Ring != "internal" {
+	if p.ID != "claude-code" || !p.SignedIn || p.AccountType != "team" || p.PinnedVersion != version || hello.Ring != "internal" ||
+		p.OrgID != testkit.OrgID {
 		t.Fatalf("hello %+v", hello)
 	}
 	if rec, _ := pairing.Load(pairingPath); rec == nil || rec.UserID != dev.UserID {
@@ -152,6 +153,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 
 	// A turn streams from the pinned (fake) Claude Code.
 	c := r.Claims(dev, version, testkit.ContextCanary, testkit.PromptCanary)
+	c.ProviderOrgIDs = []string{"11111111-2222-4333-8444-555555555555", testkit.OrgID}
 	if err := r.SendTurn(c, testkit.ContextCanary, testkit.PromptCanary); err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +191,12 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	c6 := r.Claims(dev, version, "", testkit.PromptCanary)
 	c6.Trigger = ticket.Trigger{Kind: "personal_schedule", AutomationID: "a1"}
 	reject("schedule", "trigger_unsupported", c6, "", testkit.PromptCanary)
+	c7 := r.Claims(dev, version, "", testkit.PromptCanary)
+	c7.ProviderOrgIDs = []string{"11111111-2222-4333-8444-555555555555"}
+	reject("another provider org", "provider_org_not_allowed", c7, "", testkit.PromptCanary)
+	c8 := r.Claims(dev, version, "", testkit.PromptCanary)
+	c8.ProviderOrgIDs = []string{}
+	reject("empty provider org list", "provider_org_not_allowed", c8, "", testkit.PromptCanary)
 
 	// Reconnect after the relay drops the connection.
 	r.Drop()

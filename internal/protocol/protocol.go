@@ -76,6 +76,7 @@ type ProviderInfo struct {
 	SignedIn      bool   `json:"signedIn"`
 	AccountType   string `json:"accountType,omitempty"`
 	Org           string `json:"org,omitempty"`
+	OrgID         string `json:"orgId,omitempty"`
 }
 
 // Hello is sent after authentication on every connection.
