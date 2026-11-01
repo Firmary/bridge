@@ -2,7 +2,10 @@ module github.com/Firmary/firmary-helper
 
 go 1.27.3
 
-require github.com/ProtonMail/go-crypto v1.5.2
+require (
+	github.com/ProtonMail/go-crypto v1.5.2
+	github.com/gorilla/websocket v1.5.3
+)
 
 require (
 	github.com/cloudflare/circl v1.6.3 // indirect
