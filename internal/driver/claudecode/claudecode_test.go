@@ -4,6 +4,7 @@ package claudecode
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -195,8 +196,8 @@ func TestStreamUsageEvents(t *testing.T) {
 		t.Fatalf("window %+v", w)
 	}
 	s.line([]byte(`{"type":"result","usage":{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":3,"cache_creation_input_tokens":4}}`))
-	if tok := s.result.tokens(); tok.CacheRead != 3 || tok.CacheWrite != 4 {
-		t.Fatalf("tokens %+v", tok)
+	if b, _ := json.Marshal(s.result.tokens()); string(b) != `{"input":1,"output":2,"cacheRead":3,"cacheWrite":4}` {
+		t.Fatalf("tokens %s", b)
 	}
 }
 
