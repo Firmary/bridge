@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os/exec"
 	"regexp"
@@ -90,6 +91,9 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 	_, _ = io.Copy(io.Discard, stdout)
 	waitErr := cmd.Wait()
 
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fail(protocol.ClassTransient, "turn_timeout")
+	}
 	if ctx.Err() != nil {
 		return fail(protocol.ClassFatal, "cancelled")
 	}

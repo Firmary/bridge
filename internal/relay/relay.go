@@ -227,7 +227,12 @@ func (c *Client) session(ctx context.Context, attempt int) error {
 	}
 
 	var turns sync.WaitGroup
-	defer turns.Wait()
+	// Cancel running turns before waiting for them: after a dropped connection nobody receives their output, and
+	// waiting with the session context live would keep the Helper offline until they finish.
+	defer func() {
+		cancel()
+		turns.Wait()
+	}()
 	for {
 		b, typ, err := cn.read()
 		if err != nil {
