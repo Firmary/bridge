@@ -23,6 +23,7 @@ import (
 	"github.com/Firmary/firmary-helper/internal/devicekey"
 	"github.com/Firmary/firmary-helper/internal/pairing"
 	"github.com/Firmary/firmary-helper/internal/protocol"
+	"github.com/Firmary/firmary-helper/internal/testkit"
 	"github.com/Firmary/firmary-helper/internal/ticket"
 )
 
@@ -268,7 +269,8 @@ func (r *Relay) WaitConnected(ctx context.Context) (Device, error) {
 	}
 }
 
-// Claims returns valid claims for a turn on the connected device.
+// Claims returns valid claims for a turn on the connected device. They allow business plans, so, as D7 requires,
+// they bind the turn to the firm's provider organisation: the one the fake claude reports.
 func (r *Relay) Claims(d Device, pin, context, prompt string) ticket.Claims {
 	now := time.Now()
 	return ticket.Claims{
@@ -276,7 +278,7 @@ func (r *Relay) Claims(d Device, pin, context, prompt string) ticket.Claims {
 		ConversationID: newID(), Adapter: "helper-claude-code", Model: "claude-sonnet-4-5", Pin: pin,
 		Trigger: ticket.Trigger{Kind: "interactive", SessionID: newID()}, MaxOutputTokens: 2000,
 		PromptHash: protocol.PromptHash(context, prompt, nil), AccountTypes: []string{"pro", "max", "team", "enterprise"},
-		IssuedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix(),
+		ProviderOrgIDs: []string{testkit.OrgID}, IssuedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix(),
 	}
 }
 

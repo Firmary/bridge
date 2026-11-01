@@ -17,7 +17,6 @@ import (
 	"runtime"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 
@@ -143,8 +142,9 @@ func prepare(p driver.Profile) error {
 	return nil
 }
 
-// authStatus is the subset of `claude auth status --json` the Helper reads. Email is deliberately not read. orgId is
-// read so a ticket can bind a turn to one provider organisation (providerOrgIds), not just a plan type.
+// authStatus is the subset of `claude auth status --json` the Helper reads. Email and orgName are deliberately not
+// read (consent, #1888). orgId is read so a ticket can bind a turn to one provider organisation (providerOrgIds), not
+// just a plan type.
 type authStatus struct {
 	LoggedIn         bool   `json:"loggedIn"`
 	AuthMethod       string `json:"authMethod"`
@@ -152,23 +152,19 @@ type authStatus struct {
 	APIKeySource     string `json:"apiKeySource"`
 	SubscriptionType string `json:"subscriptionType"`
 	OrgID            string `json:"orgId"`
-	OrgName          string `json:"orgName"`
 }
 
 // orgIDRe is the form of an Anthropic organisation id. Anything else is not reported, so it can never match a
 // ticket's providerOrgIds.
 var orgIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// reportable returns the account type and org name to report, each emptied if the hello schema would refuse it: one
-// bad value would reject the whole hello. The account type must be a machine name, the org 1-200 characters.
-func reportable(s authStatus) (accountType, org string) {
+// reportable returns the account type to report, emptied unless it is a machine name: the hello schema would refuse
+// it, and one bad value would reject the whole hello.
+func reportable(s authStatus) string {
 	if protocol.MachineNameRe.MatchString(s.SubscriptionType) {
-		accountType = s.SubscriptionType
+		return s.SubscriptionType
 	}
-	if n := utf8.RuneCountInString(s.OrgName); n >= 1 && n <= 200 {
-		org = s.OrgName
-	}
-	return accountType, org
+	return ""
 }
 
 // Status runs `claude auth status --json` in the profile. Signed in means a claude.ai subscription login with
@@ -203,7 +199,7 @@ func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderS
 	st := driver.ProviderStatus{Installed: version, Managed: managed}
 	if s.LoggedIn && s.AuthMethod == "claude.ai" && s.APIProvider == "firstParty" && (s.APIKeySource == "" || s.APIKeySource == "none") {
 		st.SignedIn = true
-		st.AccountType, st.Org = reportable(s)
+		st.AccountType = reportable(s)
 		if orgIDRe.MatchString(s.OrgID) {
 			st.OrgID = s.OrgID
 		}
