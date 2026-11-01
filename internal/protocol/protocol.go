@@ -108,14 +108,24 @@ type Hello struct {
 	AcceptedConsentRevision int            `json:"acceptedConsentRevision"`
 }
 
-// Turn asks the Helper to run one turn. TurnID must equal the ticket's ticketId.
+// Turn asks the Helper to run one turn. TurnID must equal the ticket's ticketId. Schema is the structured-output
+// JSON Schema sent as a JSON string; nil means absent.
 type Turn struct {
-	Type    string          `json:"type"`
-	TurnID  string          `json:"turnId"`
-	Ticket  string          `json:"ticket"`
-	Context string          `json:"context"`
-	Prompt  string          `json:"prompt"`
-	Schema  json.RawMessage `json:"schema,omitempty"`
+	Type    string  `json:"type"`
+	TurnID  string  `json:"turnId"`
+	Ticket  string  `json:"ticket"`
+	Context string  `json:"context"`
+	Prompt  string  `json:"prompt"`
+	Schema  *string `json:"schema,omitempty"`
+}
+
+// PromptHash hashes the turn's decoded context, prompt and schema strings (not their raw JSON tokens).
+func (t Turn) PromptHash() string {
+	var schema []byte
+	if t.Schema != nil {
+		schema = []byte(*t.Schema)
+	}
+	return PromptHash(t.Context, t.Prompt, schema)
 }
 
 // Cancel stops a running turn.

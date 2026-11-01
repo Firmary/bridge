@@ -204,6 +204,15 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	c8 := r.Claims(dev, version, "", testkit.PromptCanary)
 	c8.ProviderOrgIDs = []string{}
 	reject("empty provider org list", "provider_org_not_allowed", c8, "", testkit.PromptCanary)
+	c9 := r.Claims(dev, version, "", testkit.PromptCanary)
+	empty := ""
+	if err := r.SendRaw(protocol.Turn{Type: protocol.TypeTurn, TurnID: c9.TicketID, Ticket: ticket.Sign(r.TicketKey, c9),
+		Prompt: testkit.PromptCanary, Schema: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	if evs := terminal(t, r, c9.TicketID); len(evs) != 1 || evs[0].Pattern != "schema_empty" {
+		t.Errorf("empty schema: got %+v, want error schema_empty", evs)
+	}
 
 	// Reconnect after the relay drops the connection.
 	r.Drop()
