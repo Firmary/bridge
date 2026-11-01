@@ -58,11 +58,19 @@ const (
 	maxMessageBytes  = 8 << 20
 )
 
-// CheckURL allows wss:// anywhere and ws:// only to a loopback address (the fake relay in development).
+// CheckURL allows wss:// anywhere and ws:// only to a loopback address (the fake relay in development), and only
+// in canonical form, because the auth payload signs the URL as an exact string and the relay compares it with its
+// own configured constant. Canonical: lower-case scheme and host, no userinfo, no port unless it differs from the
+// scheme's default, path exactly "/", no query or fragment. For example wss://relay.prod.firmary.app/
 func CheckURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" || u.User != nil {
 		return errors.New("relay URL is malformed")
+	}
+	defaultPort := map[string]string{"wss": "443", "ws": "80"}[u.Scheme]
+	if u.String() != raw || u.Host != strings.ToLower(u.Host) || u.Path != "/" || u.RawPath != "" || u.RawQuery != "" ||
+		u.ForceQuery || u.Fragment != "" || (u.Port() != "" && u.Port() == defaultPort) || strings.HasSuffix(u.Hostname(), ".") {
+		return errors.New("relay URL is not in canonical form (scheme://host[:port]/)")
 	}
 	switch u.Scheme {
 	case "wss":
