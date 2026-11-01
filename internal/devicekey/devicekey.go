@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/Firmary/firmary-helper/internal/fsperm"
 )
 
 // AuthContext is the domain-separation prefix for relay challenge signatures.
@@ -25,8 +27,8 @@ type Key struct {
 	priv ed25519.PrivateKey
 }
 
-// LoadOrCreate loads the key at path, or creates one if no file exists. On Unix a key file readable by anyone but
-// its owner is refused rather than silently used.
+// LoadOrCreate loads the key at path, or creates one if no file exists. On Unix a key file not owned by the current
+// user, or accessible to anyone else, is refused rather than silently used.
 func LoadOrCreate(path string) (*Key, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -35,14 +37,8 @@ func LoadOrCreate(path string) (*Key, error) {
 	if err != nil {
 		return nil, err
 	}
-	if runtime.GOOS != "windows" {
-		st, err := os.Stat(path)
-		if err != nil {
-			return nil, err
-		}
-		if st.Mode().Perm()&0o077 != 0 {
-			return nil, fmt.Errorf("device key file is accessible to other users (mode %v); refusing to use it", st.Mode().Perm())
-		}
+	if err := fsperm.CheckOwned(path, 0o077); err != nil {
+		return nil, fmt.Errorf("device key: %w", err)
 	}
 	seed, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(b)))
 	if err != nil || len(seed) != ed25519.SeedSize {

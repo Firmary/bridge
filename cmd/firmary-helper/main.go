@@ -18,6 +18,7 @@ import (
 	"syscall"
 
 	"github.com/Firmary/firmary-helper/internal/driver/claudecode"
+	"github.com/Firmary/firmary-helper/internal/fsperm"
 	"github.com/Firmary/firmary-helper/internal/helper"
 	"github.com/Firmary/firmary-helper/internal/logx"
 	"github.com/Firmary/firmary-helper/internal/relay"
@@ -127,8 +128,16 @@ func run(args []string) error {
 
 	root := *dataDir
 	envDir := filepath.Join(root, *envName)
-	if err := os.MkdirAll(envDir, 0o700); err != nil {
-		return err
+	// MkdirAll doesn't fix a directory that already exists, so check every one: another local user who owns or can
+	// write any of them could swap the verified Claude Code binary or plant a key or pairing.
+	for _, d := range []string{root, envDir, filepath.Join(envDir, "profiles"), filepath.Join(root, "logs"),
+		filepath.Join(root, "providers"), filepath.Join(root, "providers", claudecode.ID)} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			return err
+		}
+		if err := fsperm.CheckOwned(d, 0o022); err != nil {
+			return fmt.Errorf("data directory: %w", err)
+		}
 	}
 	log, err := logx.Open(filepath.Join(root, "logs"))
 	if err != nil {
