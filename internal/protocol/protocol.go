@@ -24,9 +24,10 @@ const (
 	TypeRevoke         = "revoke"
 	TypeError          = "error"
 	// Helper -> relay.
-	TypeAuth  = "auth"
-	TypeHello = "hello"
-	TypeEvent = "event"
+	TypeAuth          = "auth"
+	TypePairingReveal = "pairing_reveal"
+	TypeHello         = "hello"
+	TypeEvent         = "event"
 )
 
 // Envelope is used to read a message's type before decoding the rest.
@@ -40,25 +41,39 @@ type Challenge struct {
 	Nonce string `json:"nonce"`
 }
 
-// Auth answers a challenge: the device public key and its signature over devicekey.AuthPayload.
+// Auth answers a challenge: the device public key and its signature over devicekey.AuthPayload. PairingCommit
+// (base64url, 32 bytes) is pairing.Commit over this connection's fresh helper nonce; it is sent on every connection
+// and used only if the relay answers pairing_pending.
 type Auth struct {
 	Type          string `json:"type"`
 	PublicKey     string `json:"publicKey"`
 	Signature     string `json:"signature"`
 	HelperVersion string `json:"helperVersion"`
+	PairingCommit string `json:"pairingCommit"`
 }
 
-// PairingPending: the relay doesn't know this key yet. The Helper shows its pairing code and waits for Paired.
+// PairingPending: the relay doesn't know this key yet. PairingNonce is the relay's nonce Nr (base64url, exactly 32
+// bytes), sent only after the commitment. The Helper answers with PairingReveal, shows its code and waits for
+// Paired.
 type PairingPending struct {
-	Type string `json:"type"`
+	Type         string `json:"type"`
+	PairingNonce string `json:"pairingNonce"`
 }
 
-// Paired: the person confirmed the code in Firmary, binding this key to them.
+// PairingReveal reveals the helper nonce Nh (base64url, 32 bytes) committed to in Auth.
+type PairingReveal struct {
+	Type  string `json:"type"`
+	Nonce string `json:"nonce"`
+}
+
+// Paired: the person confirmed the code in Firmary, binding this key to them. FirmName is the firm's display name,
+// shown on the Helper ("Paired to ...") so pairing to the wrong account is noticed.
 type Paired struct {
 	Type     string `json:"type"`
 	DeviceID string `json:"deviceId"`
 	UserID   string `json:"userId"`
 	FirmID   string `json:"firmId"`
+	FirmName string `json:"firmName"`
 }
 
 // Welcome: the relay recognised an already-paired key.

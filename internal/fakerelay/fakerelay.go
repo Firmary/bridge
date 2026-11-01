@@ -4,9 +4,11 @@
 package fakerelay
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -25,7 +27,10 @@ import (
 )
 
 // Device is a paired device as the relay knows it.
-type Device struct{ DeviceID, UserID, FirmID string }
+type Device struct{ DeviceID, UserID, FirmID, FirmName string }
+
+// FirmName is the display name the fake relay sends in paired.
+const FirmName = "Synthetic Test Firm"
 
 // Relay is a running fake relay.
 type Relay struct {
@@ -114,7 +119,8 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 	}
 	pub, err1 := base64.RawURLEncoding.DecodeString(auth.PublicKey)
 	sig, err2 := base64.RawURLEncoding.DecodeString(auth.Signature)
-	if err1 != nil || err2 != nil || len(pub) != ed25519.PublicKeySize ||
+	commit, err3 := base64.RawURLEncoding.DecodeString(auth.PairingCommit)
+	if err1 != nil || err2 != nil || err3 != nil || len(pub) != ed25519.PublicKeySize || len(commit) != sha256.Size ||
 		!ed25519.Verify(pub, devicekey.AuthPayload(r.URL, nonce), sig) {
 		c.WriteJSON(protocol.RelayError{Type: protocol.TypeError, Code: "bad_auth"})
 		return
@@ -142,14 +148,36 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 	} else {
-		code := pairing.Code(pub, nonce)
+		// Server side of commit-then-reveal: Nr only after the commitment (in auth), then the reveal must match it.
+		relayNonce := make([]byte, pairing.NonceSize)
+		rand.Read(relayNonce)
+		if c.WriteJSON(protocol.PairingPending{Type: protocol.TypePairingPending,
+			PairingNonce: base64.RawURLEncoding.EncodeToString(relayNonce)}) != nil {
+			return
+		}
+		b, ok := <-msgs
+		if !ok {
+			return
+		}
+		var reveal protocol.PairingReveal
+		json.Unmarshal(b, &reveal)
+		helperNonce, err := base64.RawURLEncoding.DecodeString(reveal.Nonce)
+		if reveal.Type != protocol.TypePairingReveal || err != nil || len(helperNonce) != pairing.NonceSize ||
+			!bytes.Equal(pairing.Commit(pub, helperNonce), commit) {
+			c.WriteJSON(protocol.RelayError{Type: protocol.TypeError, Code: "bad_pairing_reveal"})
+			return
+		}
+		code := pairing.Code(pub, relayNonce, helperNonce)
 		confirmed := make(chan Device, 1)
 		r.mu.Lock()
 		r.pending[code] = confirmed
 		r.mu.Unlock()
-		if c.WriteJSON(protocol.PairingPending{Type: protocol.TypePairingPending}) != nil {
-			return
-		}
+		// The pending code lives only as long as this connection.
+		defer func() {
+			r.mu.Lock()
+			delete(r.pending, code)
+			r.mu.Unlock()
+		}()
 		r.Codes <- code
 		if r.AutoConfirm {
 			r.Confirm(code)
@@ -168,7 +196,8 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 		r.mu.Lock()
 		r.devices[auth.PublicKey] = dev
 		r.mu.Unlock()
-		if c.WriteJSON(protocol.Paired{Type: protocol.TypePaired, DeviceID: dev.DeviceID, UserID: dev.UserID, FirmID: dev.FirmID}) != nil {
+		if c.WriteJSON(protocol.Paired{Type: protocol.TypePaired, DeviceID: dev.DeviceID, UserID: dev.UserID, FirmID: dev.FirmID,
+			FirmName: dev.FirmName}) != nil {
 			return
 		}
 	}
@@ -206,7 +235,7 @@ func (r *Relay) Confirm(code string) bool {
 	delete(r.pending, code)
 	r.mu.Unlock()
 	if ok {
-		ch <- Device{DeviceID: newID("dev_"), UserID: newID("usr_"), FirmID: newID("firm_")}
+		ch <- Device{DeviceID: newID("dev_"), UserID: newID("usr_"), FirmID: newID("firm_"), FirmName: FirmName}
 	}
 	return ok
 }

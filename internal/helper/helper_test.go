@@ -56,7 +56,7 @@ type rig struct {
 	h                          *helper.Helper
 	log                        *logx.Logger
 	data, keyPath, pairingPath string
-	shown                      chan string
+	shown, paired              chan string
 	code                       string
 	hello                      protocol.Hello
 	dev                        fakerelay.Device
@@ -105,10 +105,11 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	if configure != nil {
 		configure(h)
 	}
-	g := &rig{r: r, h: h, log: log, data: data, shown: make(chan string, 4), runDone: make(chan struct{}),
+	g := &rig{r: r, h: h, log: log, data: data, shown: make(chan string, 4), paired: make(chan string, 4), runDone: make(chan struct{}),
 		pairingPath: filepath.Join(data, "pairing.json"), keyPath: filepath.Join(data, "device.key")}
 	client, err := relay.New(relay.Config{URL: r.URL, Env: "local", KeyPath: g.keyPath, PairingPath: g.pairingPath,
 		HelperVersion: "0.0.0-test", Log: log, Handler: h, ShowPairingCode: func(c string) { g.shown <- c },
+		ShowPaired: func(name string) { g.paired <- name },
 		MinBackoff: 10 * time.Millisecond, MaxBackoff: 50 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +126,9 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	}
 	if !r.Confirm(g.code) {
 		t.Fatal("confirm failed")
+	}
+	if name := recv(t, g.paired, "paired to"); name != fakerelay.FirmName {
+		t.Fatalf("paired to %q", name)
 	}
 	g.hello = recv(t, r.Hellos, "hello")
 	g.dev, _ = r.WaitConnected(ctx)

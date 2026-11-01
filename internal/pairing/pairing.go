@@ -1,9 +1,16 @@
 // Package pairing stores which Firmary user and firm this device is paired to, and derives the pairing code the
 // person compares between the Helper and Firmary.
+//
+// The code is a commit-then-reveal short authentication string. On each connection the Helper picks a fresh
+// random helper nonce Nh and sends Commit(pub, Nh) with its auth message. Only then does the relay send its
+// pairing nonce Nr, and only after that does the Helper reveal Nh. Code = H(pub, Nr, Nh). Each side's randomness is
+// fixed before it sees the other's, so a relay impersonator can't grind a nonce that makes the Helper show the code
+// of a different key: it gets one 2^-40 guess per attempt.
 package pairing
 
 import (
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base32"
 	"encoding/json"
@@ -90,20 +97,45 @@ func Delete(path string) error {
 	return err
 }
 
-// codeContext domain-separates the pairing code hash.
-const codeContext = "firmary-helper-pair-v1"
+// Domain separation for the commitment and the code.
+const (
+	commitContext = "firmary-helper-pair-commit-v1"
+	codeContext   = "firmary-helper-pair-v2"
+)
+
+// NonceSize is the exact size of both pairing nonces (Nh and Nr).
+const NonceSize = 32
 
 var crockford = base32.NewEncoding("0123456789ABCDEFGHJKMNPQRSTVWXYZ").WithPadding(base32.NoPadding)
 
-// Code is the pairing code for a device public key and the relay's challenge nonce: 40 bits, shown as XXXX-XXXX.
-// The Helper computes it itself, so a relay can't make it display a code that belongs to a different key, and
-// Firmary computes the same value for the pending key. The person confirms that the two match.
-func Code(pub ed25519.PublicKey, nonce []byte) string {
+// NewNonce returns a fresh helper nonce Nh. Use a new one on every connection; never reuse one once revealed.
+func NewNonce() ([]byte, error) {
+	b := make([]byte, NonceSize)
+	_, err := rand.Read(b)
+	return b, err
+}
+
+// Commit is SHA-256(commitContext || 0x00 || pub || Nh): the commitment to Nh sent before the relay's nonce.
+func Commit(pub ed25519.PublicKey, helperNonce []byte) []byte {
+	h := sha256.New()
+	h.Write([]byte(commitContext))
+	h.Write([]byte{0})
+	h.Write(pub)
+	h.Write(helperNonce)
+	return h.Sum(nil)
+}
+
+// Code is the pairing code: the first 40 bits of SHA-256(codeContext || 0x00 || pub || Nr || Nh), Crockford
+// base32, shown as XXXX-XXXX. Every input has a fixed size (32 bytes each), so the concatenation is unambiguous.
+// The Helper computes it itself and Firmary computes the same value for the pending key; the person confirms that
+// the two match.
+func Code(pub ed25519.PublicKey, relayNonce, helperNonce []byte) string {
 	h := sha256.New()
 	h.Write([]byte(codeContext))
 	h.Write([]byte{0})
 	h.Write(pub)
-	h.Write(nonce)
+	h.Write(relayNonce)
+	h.Write(helperNonce)
 	s := crockford.EncodeToString(h.Sum(nil)[:5])
 	return s[:4] + "-" + s[4:]
 }

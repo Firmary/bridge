@@ -12,8 +12,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gorilla/websocket"
 
@@ -39,7 +42,8 @@ type Config struct {
 	HelperVersion   string
 	Log             *logx.Logger
 	Handler         TurnHandler
-	ShowPairingCode func(code string) // shows the code to the person; never logged
+	ShowPairingCode func(code string)     // shows the code to the person; never logged
+	ShowPaired      func(firmName string) // tells the person which firm they paired to; never logged
 	MinBackoff      time.Duration
 	MaxBackoff      time.Duration
 }
@@ -290,11 +294,17 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 	c.mu.Lock()
 	key := c.key
 	c.mu.Unlock()
+	// A fresh helper nonce per connection, committed to now and revealed only after the relay's pairing nonce.
+	helperNonce, err := pairing.NewNonce()
+	if err != nil {
+		return none, sessionError("rand_failed")
+	}
 	err = cn.send(protocol.Auth{
 		Type:          protocol.TypeAuth,
 		PublicKey:     base64.RawURLEncoding.EncodeToString(key.Public()),
 		Signature:     base64.RawURLEncoding.EncodeToString(key.SignAuth(c.cfg.URL, nonce)),
 		HelperVersion: c.cfg.HelperVersion,
+		PairingCommit: base64.RawURLEncoding.EncodeToString(pairing.Commit(key.Public(), helperNonce)),
 	})
 	if err != nil {
 		return none, err
@@ -328,17 +338,33 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 			c.cfg.Log.Log(logx.RelayAuthed, logx.Fields{DeviceID: rec.DeviceID})
 			return rec, nil
 		case protocol.TypePairingPending:
+			if codeShown {
+				// One relay nonce per connection: a second one would let the relay try again against the same Nh.
+				return none, sessionError("unexpected_message")
+			}
+			m, err := protocol.Decode[protocol.PairingPending](b)
+			if err != nil {
+				return none, err
+			}
+			relayNonce, err := base64.RawURLEncoding.DecodeString(m.PairingNonce)
+			if err != nil || len(relayNonce) != pairing.NonceSize {
+				return none, sessionError("bad_pairing_nonce")
+			}
 			if local != nil {
 				// The relay no longer knows this key. Keep the local record until a confirmed pairing replaces it.
 				c.cfg.Log.Log(logx.PairingPending, logx.Fields{DeviceID: local.DeviceID, Reason: "relay_forgot_device"})
 			} else {
 				c.cfg.Log.Log(logx.PairingPending, logx.Fields{})
 			}
+			if err := cn.send(protocol.PairingReveal{Type: protocol.TypePairingReveal,
+				Nonce: base64.RawURLEncoding.EncodeToString(helperNonce)}); err != nil {
+				return none, err
+			}
 			// No read deadline while the person confirms the code; pings keep the connection checked.
 			_ = cn.ws.SetReadDeadline(time.Time{})
 			codeShown = true
 			if c.cfg.ShowPairingCode != nil {
-				c.cfg.ShowPairingCode(pairing.Code(key.Public(), nonce))
+				c.cfg.ShowPairingCode(pairing.Code(key.Public(), relayNonce, helperNonce))
 			}
 		case protocol.TypePaired:
 			if !codeShown {
@@ -349,11 +375,18 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 			if err != nil {
 				return none, err
 			}
+			firmName, ok := displayName(m.FirmName)
+			if !ok {
+				return none, sessionError("bad_paired")
+			}
 			rec := pairing.Record{DeviceID: m.DeviceID, UserID: m.UserID, FirmID: m.FirmID, Env: c.cfg.Env}
 			if err := pairing.Save(c.cfg.PairingPath, rec); err != nil {
 				return none, sessionError("pairing_save_failed")
 			}
 			c.cfg.Log.Log(logx.Paired, logx.Fields{DeviceID: rec.DeviceID})
+			if c.cfg.ShowPaired != nil {
+				c.cfg.ShowPaired(firmName)
+			}
 			return rec, nil
 		case protocol.TypeError:
 			m, _ := protocol.Decode[protocol.RelayError](b)
@@ -362,6 +395,25 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 			return none, sessionError("unexpected_message")
 		}
 	}
+}
+
+// maxDisplayName bounds a firm display name, in characters.
+const maxDisplayName = 200
+
+// displayName makes a relay-supplied name safe to print on a terminal: control characters and bidi overrides are
+// removed (so the name can't move the cursor or disguise itself), and it must be 1 to maxDisplayName characters.
+func displayName(s string) (string, bool) {
+	if !utf8.ValidString(s) {
+		return "", false
+	}
+	s = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
+			return -1
+		}
+		return r
+	}, s))
+	n := utf8.RuneCountInString(s)
+	return s, n > 0 && n <= maxDisplayName
 }
 
 // revoke handles the relay's revoke: the device was unpaired.
