@@ -1,0 +1,254 @@
+{
+  "$comment": "Each valid document must parse. Each invalid document must fail, with an error at `path` (JSON Pointer). Synthetic values only; the ticket is a shape example, not a real signature. `path` is where the Zod parse reports the error; a JSON Schema validator may report a parent or union branch instead, so other implementations need only check pass or fail.",
+  "valid": [
+    {
+      "name": "challenge",
+      "document": {
+        "type": "challenge",
+        "nonce": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8"
+      }
+    },
+    {
+      "name": "pairing pending (pairing vector)",
+      "document": {
+        "type": "pairing_pending",
+        "pairingNonce": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8"
+      }
+    },
+    {
+      "name": "paired",
+      "document": {
+        "type": "paired",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "firmName": "Example Accounting LLC"
+      }
+    },
+    {
+      "name": "welcome",
+      "document": {
+        "type": "welcome",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+      }
+    },
+    {
+      "name": "relay error",
+      "document": {
+        "type": "error",
+        "code": "bad_auth"
+      }
+    },
+    {
+      "name": "turn with structured output schema (promptHash vector)",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVyLWV4YW1wbGU.cGF5bG9hZC1leGFtcGxl.c2lnbmF0dXJlLWV4YW1wbGU",
+        "context": "Client: Example Co. Open requests: 2.",
+        "prompt": "Summarize the open requests.",
+        "schema": "{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}}"
+      }
+    },
+    {
+      "name": "turn with empty context",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
+        "context": "",
+        "prompt": "Hello"
+      }
+    },
+    {
+      "name": "cancel",
+      "document": {
+        "type": "cancel",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b"
+      }
+    },
+    {
+      "name": "sign in",
+      "document": {
+        "type": "signin",
+        "provider": "claude-code"
+      }
+    },
+    {
+      "name": "sign out",
+      "document": {
+        "type": "signout",
+        "provider": "codex"
+      }
+    },
+    {
+      "name": "revoke",
+      "document": {
+        "type": "revoke"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "unknown message type",
+      "path": "/type",
+      "document": {
+        "type": "exec",
+        "command": "rm -rf ~"
+      }
+    },
+    {
+      "name": "ticket that is not a compact JWS",
+      "path": "/ticket",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "not a token",
+        "context": "",
+        "prompt": "Hello"
+      }
+    },
+    {
+      "name": "turn with an empty prompt",
+      "path": "/prompt",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
+        "context": "",
+        "prompt": ""
+      }
+    },
+    {
+      "name": "turn without a ticket",
+      "path": "/ticket",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "context": "",
+        "prompt": "Hello"
+      }
+    },
+    {
+      "name": "sign in to an unknown provider",
+      "path": "/provider",
+      "document": {
+        "type": "signin",
+        "provider": "gemini-cli"
+      }
+    },
+    {
+      "name": "cancel without a turn id",
+      "path": "/turnId",
+      "document": {
+        "type": "cancel"
+      }
+    },
+    {
+      "name": "structured-output schema sent as an object",
+      "path": "/schema",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
+        "context": "",
+        "prompt": "Hello",
+        "schema": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "name": "turn without a turn id",
+      "path": "/turnId",
+      "document": {
+        "type": "turn",
+        "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
+        "context": "",
+        "prompt": "Hello"
+      }
+    },
+    {
+      "name": "challenge nonce shorter than 32 bytes",
+      "path": "/nonce",
+      "document": {
+        "type": "challenge",
+        "nonce": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xd"
+      }
+    },
+    {
+      "name": "challenge nonce in padded standard base64",
+      "path": "/nonce",
+      "document": {
+        "type": "challenge",
+        "nonce": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8+/w=="
+      }
+    },
+    {
+      "name": "paired with a device id that is not a uuid",
+      "path": "/deviceId",
+      "document": {
+        "type": "paired",
+        "deviceId": "dev_0a1b2c3d4e5f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "firmName": "Example Accounting LLC"
+      }
+    },
+    {
+      "name": "welcome without a firm",
+      "path": "/firmId",
+      "document": {
+        "type": "welcome",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a"
+      }
+    },
+    {
+      "name": "error code carrying free text",
+      "path": "/code",
+      "document": {
+        "type": "error",
+        "code": "Device key rejected: see logs"
+      }
+    },
+    {
+      "name": "pairing pending without a pairing nonce",
+      "path": "/pairingNonce",
+      "document": {
+        "type": "pairing_pending"
+      }
+    },
+    {
+      "name": "pairing nonce shorter than 32 bytes",
+      "path": "/pairingNonce",
+      "document": {
+        "type": "pairing_pending",
+        "pairingNonce": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9"
+      }
+    },
+    {
+      "name": "paired without the firm's name",
+      "path": "/firmName",
+      "document": {
+        "type": "paired",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d"
+      }
+    },
+    {
+      "name": "paired with an empty firm name",
+      "path": "/firmName",
+      "document": {
+        "type": "paired",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "firmName": ""
+      }
+    }
+  ]
+}

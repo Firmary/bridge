@@ -103,9 +103,12 @@ func (h *Helper) check(ctx context.Context, rec pairing.Record, t protocol.Turn)
 		return c, st, protocol.ClassPolicy, "not_paired_firm"
 	case c.Adapter != AdapterID:
 		return c, st, protocol.ClassPolicy, "adapter_mismatch"
-	case protocol.PromptHash(t.Context, t.Prompt, t.Schema) != c.PromptHash:
+	case t.Schema != nil && *t.Schema == "":
+		// An empty schema would hash like an absent one.
+		return c, st, protocol.ClassPolicy, "schema_empty"
+	case t.PromptHash() != c.PromptHash:
 		return c, st, protocol.ClassPolicy, "prompt_hash_mismatch"
-	case len(t.Schema) > 0:
+	case t.Schema != nil:
 		return c, st, protocol.ClassPolicy, "schema_unsupported"
 	case c.Trigger.Kind != "interactive":
 		// Personal schedules need the per-automation consent (G4), which arrives in a later slice.
