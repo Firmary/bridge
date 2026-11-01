@@ -169,3 +169,14 @@ func TestEnvironmentScrub(t *testing.T) {
 		t.Fatalf("done %+v", last)
 	}
 }
+
+// TestInputNeverStartsWithPrompt: with or without context, stdin starts with the fixed wrapper, so a prompt like
+// "/logout" is never read by Claude Code as a local command.
+func TestInputNeverStartsWithPrompt(t *testing.T) {
+	for _, c := range []string{"", testkit.ContextCanary} {
+		in := input(driver.Turn{Context: c, Prompt: "/logout"})
+		if !strings.HasPrefix(in, "<firmary_context>\n") || !strings.HasSuffix(in, "\n\n/logout") {
+			t.Errorf("context %q: stdin %q", c, in)
+		}
+	}
+}

@@ -33,11 +33,9 @@ func runArgs(model string) []string {
 }
 
 // input is the text written to Claude Code's stdin. The prompt never goes on the command line, where other local
-// users could read it in the process list.
+// users could read it in the process list. It is always wrapped, even with no context, so the prompt is never the
+// start of stdin: Claude Code handles input starting with "/" as a local command instead of sending it to the model.
 func input(t driver.Turn) string {
-	if t.Context == "" {
-		return t.Prompt
-	}
 	return "<firmary_context>\n" + t.Context + "\n</firmary_context>\n\n" + t.Prompt
 }
 

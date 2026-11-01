@@ -83,7 +83,8 @@ const (
 // TestRealNoLocalContextReachesAPI runs the real pinned Claude Code (same opt-in as TestRealPinnedClaudeCode) with
 // HOME set to a git repository above the profile, as a dotfiles setup would have. Claude Code is pointed at a local
 // stub that records every request and answers 400, with a dummy key: no account, no traffic to Anthropic's API.
-// Nothing about the repository (commit messages, untracked file names) may appear in any request.
+// Nothing about the repository (commit messages, untracked file names) may appear in any request, and a prompt
+// starting with "/" must be sent to the model rather than handled locally.
 func TestRealNoLocalContextReachesAPI(t *testing.T) {
 	root := os.Getenv("FIRMARY_HELPER_REAL_CLAUDE")
 	if root == "" {
@@ -136,12 +137,18 @@ func TestRealNoLocalContextReachesAPI(t *testing.T) {
 
 	_ = d.Run(ctx, prof, driver.Turn{ID: "real-git", Model: "claude-sonnet-4-5", Prompt: "Reply with the single word: pong",
 		MaxOutputTokens: 200}, func(protocol.StreamEvent) {})
+	// A prompt that starts with "/" must reach the model as text, not run as a local command.
+	_ = d.Run(ctx, prof, driver.Turn{ID: "real-slash", Model: "claude-sonnet-4-5", Prompt: "/logout",
+		MaxOutputTokens: 200}, func(protocol.StreamEvent) {})
 
 	mu.Lock()
 	all := strings.Join(bodies, "\n")
 	mu.Unlock()
 	if !strings.Contains(all, "/v1/messages") || !strings.Contains(all, "pong") {
 		t.Fatalf("the stub saw no messages request with the prompt; the test proves nothing (%d requests)", len(bodies))
+	}
+	if !strings.Contains(all, "/logout") {
+		t.Error(`the prompt "/logout" did not reach the API as text`)
 	}
 	for _, c := range []string{gitCommitCanary, gitUntrackedCanary} {
 		if strings.Contains(all, c) {
