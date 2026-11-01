@@ -32,9 +32,9 @@ type Driver struct {
 	platform string
 	environ  func() []string
 
-	mu        sync.Mutex
-	version   string
-	binary    string
+	mu      sync.Mutex
+	version string
+	binary  string
 }
 
 // Option configures a Driver. Options exist for tests; production uses the defaults.
