@@ -77,6 +77,9 @@ type ProviderInfo struct {
 	AccountType   string `json:"accountType,omitempty"`
 	Org           string `json:"org,omitempty"`
 	OrgID         string `json:"orgId,omitempty"`
+	// Managed: machine-wide managed settings for the provider were found, so IT policy (hooks, env, gateways)
+	// applies to turns. False means none were found by the Helper's checks.
+	Managed bool `json:"managed"`
 }
 
 // Hello is sent after authentication on every connection.

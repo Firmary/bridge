@@ -77,8 +77,11 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	environ := func() []string {
 		return append(os.Environ(), "ANTHROPIC_API_KEY="+testkit.EnvCanary, "CLAUDE_CODE_OAUTH_TOKEN="+testkit.EnvCanary)
 	}
+	managedDir := t.TempDir()
+	os.WriteFile(filepath.Join(managedDir, "managed-settings.json"), []byte("{}"), 0o600)
 	drv, err := claudecode.New(filepath.Join(data, "providers", "claude-code"),
-		claudecode.WithRelease(rel.URL, rel.Keyring, nil), claudecode.WithPlatform(platform), claudecode.WithEnviron(environ))
+		claudecode.WithRelease(rel.URL, rel.Keyring, nil), claudecode.WithPlatform(platform), claudecode.WithEnviron(environ),
+		claudecode.WithManagedDirs(managedDir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +147,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	hello := g.hello
 	p := hello.Providers[0]
 	if p.ID != "claude-code" || !p.SignedIn || p.AccountType != "team" || p.PinnedVersion != version || hello.Ring != "internal" ||
-		p.OrgID != testkit.OrgID {
+		p.OrgID != testkit.OrgID || !p.Managed {
 		t.Fatalf("hello %+v", hello)
 	}
 	if rec, _ := pairing.Load(pairingPath); rec == nil || rec.UserID != dev.UserID {

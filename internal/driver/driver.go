@@ -28,6 +28,7 @@ type ProviderStatus struct {
 	AccountType string // provider's plan type, e.g. "pro", "max", "team", "enterprise"
 	Org         string // provider organisation name, if any
 	OrgID       string // provider organisation id (a UUID), if any
+	Managed     bool   // a machine-wide managed settings source for the provider was found (IT policy applies)
 }
 
 // Turn is what a driver runs: already checked against its ticket.
