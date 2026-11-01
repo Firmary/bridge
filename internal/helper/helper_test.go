@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -170,6 +171,12 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	// A turn streams from the pinned (fake) Claude Code.
 	c := r.Claims(dev, version, testkit.ContextCanary, testkit.PromptCanary)
 	c.ProviderOrgIDs = []string{"11111111-2222-4333-8444-555555555555", testkit.OrgID}
+	uuid := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	for _, id := range []string{dev.DeviceID, dev.UserID, dev.FirmID, c.TicketID, c.ConversationID, c.Trigger.SessionID} {
+		if !uuid.MatchString(id) {
+			t.Errorf("fake relay id %q is not a uuid", id)
+		}
+	}
 	if err := r.SendTurn(c, testkit.ContextCanary, testkit.PromptCanary); err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +204,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	c2 := r.Claims(dev, version, testkit.ContextCanary, testkit.PromptCanary)
 	reject("prompt swapped", "prompt_hash_mismatch", c2, testkit.ContextCanary, testkit.PromptCanary+" and also something else")
 	c3 := r.Claims(dev, version, "", testkit.PromptCanary)
-	c3.UserID = "usr_someoneelse"
+	c3.UserID = "7e6d5c4b-3a29-4180-9f7e-6d5c4b3a2918"
 	reject("another user", "not_paired_user", c3, "", testkit.PromptCanary)
 	c4 := r.Claims(dev, version, "", testkit.PromptCanary)
 	c4.AccountTypes = []string{"enterprise"}

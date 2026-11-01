@@ -84,10 +84,14 @@ func Start(addr string) (*Relay, error) {
 // Close stops the relay.
 func (r *Relay) Close() { r.srv.Close() }
 
-func newID(prefix string) string {
-	b := make([]byte, 6)
+// newID mints a random (version 4) uuid, the form the relay schemas require for ids.
+func newID() string {
+	b := make([]byte, 16)
 	rand.Read(b)
-	return prefix + hex.EncodeToString(b)
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	h := hex.EncodeToString(b)
+	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
 }
 
 func (r *Relay) send(v any) error {
@@ -235,7 +239,7 @@ func (r *Relay) Confirm(code string) bool {
 	delete(r.pending, code)
 	r.mu.Unlock()
 	if ok {
-		ch <- Device{DeviceID: newID("dev_"), UserID: newID("usr_"), FirmID: newID("firm_"), FirmName: FirmName}
+		ch <- Device{DeviceID: newID(), UserID: newID(), FirmID: newID(), FirmName: FirmName}
 	}
 	return ok
 }
@@ -268,9 +272,9 @@ func (r *Relay) WaitConnected(ctx context.Context) (Device, error) {
 func (r *Relay) Claims(d Device, pin, context, prompt string) ticket.Claims {
 	now := time.Now()
 	return ticket.Claims{
-		TicketID: newID("tkt_"), DeviceID: d.DeviceID, UserID: d.UserID, FirmID: d.FirmID,
-		ConversationID: newID("conv_"), Adapter: "helper-claude-code", Model: "claude-sonnet-4-5", Pin: pin,
-		Trigger: ticket.Trigger{Kind: "interactive", SessionID: newID("sess_")}, MaxOutputTokens: 2000,
+		TicketID: newID(), DeviceID: d.DeviceID, UserID: d.UserID, FirmID: d.FirmID,
+		ConversationID: newID(), Adapter: "helper-claude-code", Model: "claude-sonnet-4-5", Pin: pin,
+		Trigger: ticket.Trigger{Kind: "interactive", SessionID: newID()}, MaxOutputTokens: 2000,
 		PromptHash: protocol.PromptHash(context, prompt, nil), AccountTypes: []string{"pro", "max", "team", "enterprise"},
 		IssuedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix(),
 	}
