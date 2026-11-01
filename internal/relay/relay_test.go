@@ -156,3 +156,19 @@ func TestDisplayName(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckURLCanonical(t *testing.T) {
+	for _, ok := range []string{"wss://relay.prod.firmary.app/", "wss://relay.example:8443/", "ws://127.0.0.1:4000/"} {
+		if err := CheckURL(ok); err != nil {
+			t.Errorf("%s: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"wss://relay.prod.firmary.app", "wss://Relay.prod.firmary.app/", "WSS://relay.prod.firmary.app/",
+		"wss://relay.prod.firmary.app:443/", "wss://relay.prod.firmary.app./", "wss://relay.prod.firmary.app/x",
+		"wss://relay.prod.firmary.app/?", "wss://relay.prod.firmary.app/#f", "wss://u@relay.prod.firmary.app/",
+		"ws://relay.prod.firmary.app/", "https://relay.prod.firmary.app/"} {
+		if err := CheckURL(bad); err == nil {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+}
