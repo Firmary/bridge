@@ -1,0 +1,385 @@
+// Package relay is the Helper's one outbound connection to the Firmary relay: challenge-response authentication
+// with the device key, code-match pairing, hello, turn dispatch, and reconnect with backoff.
+package relay
+
+import (
+	"context"
+	"crypto/tls"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"math/rand/v2"
+	"net"
+	"net/http"
+	"net/url"
+	"sync"
+	"time"
+
+	"github.com/gorilla/websocket"
+
+	"github.com/Firmary/firmary-helper/internal/devicekey"
+	"github.com/Firmary/firmary-helper/internal/logx"
+	"github.com/Firmary/firmary-helper/internal/pairing"
+	"github.com/Firmary/firmary-helper/internal/protocol"
+)
+
+// TurnHandler runs turns. HandleTurn is called on its own goroutine and must emit a terminal event.
+type TurnHandler interface {
+	HandleTurn(ctx context.Context, rec pairing.Record, t protocol.Turn, emit func(protocol.StreamEvent))
+	Cancel(turnID string)
+	Hello(ctx context.Context, rec pairing.Record) protocol.Hello
+}
+
+// Config configures a Client.
+type Config struct {
+	URL             string // relay URL; also the exact string signed in the auth payload
+	Env             string // environment name stored in the pairing record
+	KeyPath         string
+	PairingPath     string
+	HelperVersion   string
+	Log             *logx.Logger
+	Handler         TurnHandler
+	ShowPairingCode func(code string) // shows the code to the person; never logged
+	MinBackoff      time.Duration
+	MaxBackoff      time.Duration
+}
+
+// Timeouts.
+const (
+	handshakeTimeout = 15 * time.Second
+	writeTimeout     = 10 * time.Second
+	pingEvery        = 25 * time.Second
+	readTimeout      = 75 * time.Second
+	stableAfter      = 60 * time.Second
+	maxMessageBytes  = 8 << 20
+)
+
+// CheckURL allows wss:// anywhere and ws:// only to a loopback address (the fake relay in development).
+func CheckURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil {
+		return errors.New("relay URL is malformed")
+	}
+	switch u.Scheme {
+	case "wss":
+		return nil
+	case "ws":
+		host := u.Hostname()
+		if ip := net.ParseIP(host); (ip != nil && ip.IsLoopback()) || host == "localhost" {
+			return nil
+		}
+		return errors.New("relay URL must use wss:// unless it is a loopback address")
+	}
+	return errors.New("relay URL must use wss://")
+}
+
+// Client is a relay connection that keeps itself up.
+type Client struct {
+	cfg    Config
+	dialer *websocket.Dialer
+
+	mu  sync.Mutex
+	key *devicekey.Key
+}
+
+// New loads (or creates) the device key and checks the relay URL.
+func New(cfg Config) (*Client, error) {
+	if err := CheckURL(cfg.URL); err != nil {
+		return nil, err
+	}
+	if cfg.MinBackoff == 0 {
+		cfg.MinBackoff = time.Second
+	}
+	if cfg.MaxBackoff == 0 {
+		cfg.MaxBackoff = time.Minute
+	}
+	key, err := devicekey.LoadOrCreate(cfg.KeyPath)
+	if err != nil {
+		return nil, err
+	}
+	d := &websocket.Dialer{
+		HandshakeTimeout: handshakeTimeout,
+		TLSClientConfig:  &tls.Config{MinVersion: tls.VersionTLS12},
+		Proxy:            http.ProxyFromEnvironment,
+	}
+	return &Client{cfg: cfg, dialer: d, key: key}, nil
+}
+
+var (
+	errRevoked = errors.New("device revoked")
+	errReset   = errors.New("pairing reset")
+)
+
+// Run connects and reconnects until ctx is done.
+func (c *Client) Run(ctx context.Context) error {
+	backoff := c.cfg.MinBackoff
+	for attempt := 1; ; attempt++ {
+		started := time.Now()
+		err := c.session(ctx, attempt)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		c.cfg.Log.Log(logx.RelayDisconnect, logx.Fields{Reason: reasonOf(err), DurationMs: time.Since(started).Milliseconds(), Attempt: attempt})
+		if errors.Is(err, errRevoked) || errors.Is(err, errReset) {
+			backoff = c.cfg.MinBackoff
+			continue
+		}
+		if time.Since(started) > stableAfter {
+			backoff = c.cfg.MinBackoff
+		}
+		// Full jitter: wait a random time up to the current backoff.
+		wait := time.Duration(rand.Int64N(int64(backoff))) + c.cfg.MinBackoff/2
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+		backoff = min(backoff*2, c.cfg.MaxBackoff)
+	}
+}
+
+// sessionError carries a closed-set reason code for logging.
+type sessionError string
+
+func (e sessionError) Error() string { return string(e) }
+
+func reasonOf(err error) string {
+	var se sessionError
+	switch {
+	case err == nil:
+		return "closed"
+	case errors.Is(err, errRevoked):
+		return "revoked"
+	case errors.Is(err, errReset):
+		return "pairing_reset"
+	case errors.As(err, &se):
+		return string(se)
+	}
+	return "connection_lost"
+}
+
+type conn struct {
+	ws *websocket.Conn
+	mu sync.Mutex
+}
+
+func (c *conn) send(v any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_ = c.ws.SetWriteDeadline(time.Now().Add(writeTimeout))
+	return c.ws.WriteJSON(v)
+}
+
+func (c *conn) read() ([]byte, string, error) {
+	_, b, err := c.ws.ReadMessage()
+	if err != nil {
+		return nil, "", err
+	}
+	_ = c.ws.SetReadDeadline(time.Now().Add(readTimeout))
+	var env protocol.Envelope
+	if json.Unmarshal(b, &env) != nil {
+		return nil, "", sessionError("malformed_message")
+	}
+	return b, env.Type, nil
+}
+
+func (c *Client) session(ctx context.Context, attempt int) error {
+	c.cfg.Log.Log(logx.RelayConnect, logx.Fields{Attempt: attempt})
+	ws, _, err := c.dialer.DialContext(ctx, c.cfg.URL, nil)
+	if err != nil {
+		return sessionError("dial_failed")
+	}
+	ws.SetReadLimit(maxMessageBytes)
+	_ = ws.SetReadDeadline(time.Now().Add(handshakeTimeout))
+	cn := &conn{ws: ws}
+	sctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		cancel()
+		ws.Close()
+	}()
+	go func() {
+		<-sctx.Done()
+		_ = ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
+		ws.Close()
+	}()
+	go func() {
+		t := time.NewTicker(pingEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-sctx.Done():
+				return
+			case <-t.C:
+				if ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(writeTimeout)) != nil {
+					return
+				}
+			}
+		}
+	}()
+	ws.SetPongHandler(func(string) error { return ws.SetReadDeadline(time.Now().Add(readTimeout)) })
+
+	rec, err := c.authenticate(cn)
+	if err != nil {
+		return err
+	}
+	c.cfg.Log.Log(logx.HelloSent, logx.Fields{DeviceID: rec.DeviceID, Version: c.cfg.HelperVersion})
+	hello := c.cfg.Handler.Hello(sctx, rec)
+	hello.Type = protocol.TypeHello
+	if err := cn.send(hello); err != nil {
+		return err
+	}
+
+	var turns sync.WaitGroup
+	defer turns.Wait()
+	for {
+		b, typ, err := cn.read()
+		if err != nil {
+			return err
+		}
+		switch typ {
+		case protocol.TypeTurn:
+			t, err := protocol.Decode[protocol.Turn](b)
+			if err != nil {
+				return sessionError("malformed_message")
+			}
+			turns.Add(1)
+			go func() {
+				defer turns.Done()
+				c.cfg.Handler.HandleTurn(sctx, rec, t, func(e protocol.StreamEvent) {
+					_ = cn.send(protocol.EventMsg{Type: protocol.TypeEvent, TurnID: t.TurnID, Event: e})
+				})
+			}()
+		case protocol.TypeCancel:
+			m, err := protocol.Decode[protocol.Cancel](b)
+			if err == nil {
+				c.cfg.Handler.Cancel(m.TurnID)
+			}
+		case protocol.TypeRevoke:
+			cancel()
+			turns.Wait()
+			return c.revoke()
+		case protocol.TypeError:
+			m, _ := protocol.Decode[protocol.RelayError](b)
+			return sessionError("relay_error_" + m.Code)
+		default:
+			c.cfg.Log.Log(logx.UnknownMessage, logx.Fields{Reason: typ})
+		}
+	}
+}
+
+// authenticate answers the challenge and returns this device's pairing, pairing first if the relay asks.
+func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
+	var none pairing.Record
+	b, typ, err := cn.read()
+	if err != nil {
+		return none, err
+	}
+	if typ != protocol.TypeChallenge {
+		return none, sessionError("expected_challenge")
+	}
+	ch, err := protocol.Decode[protocol.Challenge](b)
+	if err != nil {
+		return none, err
+	}
+	nonce, err := base64.RawURLEncoding.DecodeString(ch.Nonce)
+	if err != nil || len(nonce) < 32 || len(nonce) > 256 {
+		return none, sessionError("bad_challenge")
+	}
+	c.mu.Lock()
+	key := c.key
+	c.mu.Unlock()
+	err = cn.send(protocol.Auth{
+		Type:          protocol.TypeAuth,
+		PublicKey:     base64.RawURLEncoding.EncodeToString(key.Public()),
+		Signature:     base64.RawURLEncoding.EncodeToString(key.SignAuth(c.cfg.URL, nonce)),
+		HelperVersion: c.cfg.HelperVersion,
+	})
+	if err != nil {
+		return none, err
+	}
+	local, err := pairing.Load(c.cfg.PairingPath)
+	if err != nil {
+		return none, sessionError("pairing_unreadable")
+	}
+	codeShown := false
+
+	for {
+		b, typ, err := cn.read()
+		if err != nil {
+			return none, err
+		}
+		switch typ {
+		case protocol.TypeWelcome:
+			m, err := protocol.Decode[protocol.Welcome](b)
+			if err != nil {
+				return none, err
+			}
+			rec := pairing.Record{DeviceID: m.DeviceID, UserID: m.UserID, FirmID: m.FirmID, Env: c.cfg.Env}
+			if err := rec.Validate(); err != nil {
+				return none, sessionError("bad_welcome")
+			}
+			if local == nil || *local != rec {
+				// The relay names a pairing this Helper didn't see confirmed. Never adopt it: start over with a
+				// new key, so the next connection pairs by code match.
+				return none, c.wipe(logx.PairingPending, "pairing_mismatch", errReset)
+			}
+			c.cfg.Log.Log(logx.RelayAuthed, logx.Fields{DeviceID: rec.DeviceID})
+			return rec, nil
+		case protocol.TypePairingPending:
+			if local != nil {
+				// The relay no longer knows this key. Keep the local record until a confirmed pairing replaces it.
+				c.cfg.Log.Log(logx.PairingPending, logx.Fields{DeviceID: local.DeviceID, Reason: "relay_forgot_device"})
+			} else {
+				c.cfg.Log.Log(logx.PairingPending, logx.Fields{})
+			}
+			// No read deadline while the person confirms the code; pings keep the connection checked.
+			_ = cn.ws.SetReadDeadline(time.Time{})
+			codeShown = true
+			if c.cfg.ShowPairingCode != nil {
+				c.cfg.ShowPairingCode(pairing.Code(key.Public(), nonce))
+			}
+		case protocol.TypePaired:
+			if !codeShown {
+				// Pairing only ever follows a code the person could compare.
+				return none, sessionError("paired_without_code")
+			}
+			m, err := protocol.Decode[protocol.Paired](b)
+			if err != nil {
+				return none, err
+			}
+			rec := pairing.Record{DeviceID: m.DeviceID, UserID: m.UserID, FirmID: m.FirmID, Env: c.cfg.Env}
+			if err := pairing.Save(c.cfg.PairingPath, rec); err != nil {
+				return none, sessionError("pairing_save_failed")
+			}
+			c.cfg.Log.Log(logx.Paired, logx.Fields{DeviceID: rec.DeviceID})
+			return rec, nil
+		case protocol.TypeError:
+			m, _ := protocol.Decode[protocol.RelayError](b)
+			return none, sessionError("relay_error_" + m.Code)
+		default:
+			return none, sessionError("unexpected_message")
+		}
+	}
+}
+
+// revoke handles the relay's revoke: the device was unpaired.
+func (c *Client) revoke() error { return c.wipe(logx.Revoked, "", errRevoked) }
+
+// wipe deletes the pairing and the device key, then makes a fresh key so the next connection pairs anew.
+func (c *Client) wipe(ev logx.Event, reason string, result error) error {
+	c.cfg.Log.Log(ev, logx.Fields{Reason: reason})
+	if err := pairing.Delete(c.cfg.PairingPath); err != nil {
+		return sessionError("revoke_failed")
+	}
+	if err := devicekey.Delete(c.cfg.KeyPath); err != nil {
+		return sessionError("revoke_failed")
+	}
+	key, err := devicekey.LoadOrCreate(c.cfg.KeyPath)
+	if err != nil {
+		return sessionError("revoke_failed")
+	}
+	c.mu.Lock()
+	c.key = key
+	c.mu.Unlock()
+	return result
+}
