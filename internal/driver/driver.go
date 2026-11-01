@@ -27,6 +27,7 @@ type ProviderStatus struct {
 	SignedIn    bool   // signed in with a subscription plan (not an API key)
 	AccountType string // provider's plan type, e.g. "pro", "max", "team", "enterprise"
 	Org         string // provider organisation name, if any
+	OrgID       string // provider organisation id (a UUID), if any
 }
 
 // Turn is what a driver runs: already checked against its ticket.

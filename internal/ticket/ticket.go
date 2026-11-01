@@ -34,7 +34,7 @@ type Trigger struct {
 }
 
 // Claims are the ticket claims (build plan §4.3), plus accountTypes: the provider account types this turn may
-// run on (D7: business-only unless the firm allows personal plans).
+// run on (D7: business-only unless the firm allows personal plans), and optional providerOrgIds.
 type Claims struct {
 	TicketID        string   `json:"ticketId"`
 	DeviceID        string   `json:"deviceId"`
@@ -49,8 +49,10 @@ type Claims struct {
 	MaxOutputTokens int      `json:"maxOutputTokens"`
 	PromptHash      string   `json:"promptHash"`
 	AccountTypes    []string `json:"accountTypes"`
-	IssuedAt        int64    `json:"iat"`
-	ExpiresAt       int64    `json:"exp"`
+	// ProviderOrgIDs, when present, limits the turn to a provider login in one of these organisations.
+	ProviderOrgIDs []string `json:"providerOrgIds,omitzero"`
+	IssuedAt       int64    `json:"iat"`
+	ExpiresAt      int64    `json:"exp"`
 }
 
 // Reason is a closed-set rejection code, safe to log and to send back as an error pattern.
