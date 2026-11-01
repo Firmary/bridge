@@ -63,7 +63,7 @@ func (h *Helper) Hello(ctx context.Context, rec pairing.Record) protocol.Hello {
 		Ring:          h.Ring,
 		Providers: []protocol.ProviderInfo{{
 			ID: h.Driver.ID(), PinnedVersion: st.Installed, SignedIn: st.SignedIn, AccountType: st.AccountType, Org: st.Org,
-			OrgID: st.OrgID,
+			OrgID: st.OrgID, Managed: st.Managed,
 		}},
 		// Consent screens arrive with the setup slice; until then nothing beyond revision 0 is accepted.
 		AcceptedConsentRevision: 0,

@@ -180,3 +180,24 @@ func TestInputNeverStartsWithPrompt(t *testing.T) {
 		}
 	}
 }
+
+// TestManagedSettingsReported: an empty or missing managed directory is not managed; any entry in one is.
+func TestManagedSettingsReported(t *testing.T) {
+	empty, used := t.TempDir(), t.TempDir()
+	missing := filepath.Join(t.TempDir(), "missing")
+	status := func(dirs ...string) bool {
+		d, err := New(t.TempDir(), WithManagedDirs(dirs...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		st, _ := d.Status(context.Background(), driver.Profile{UserID: "u1", Dir: t.TempDir()})
+		return st.Managed
+	}
+	if status(empty, missing) {
+		t.Error("empty or missing managed directories reported as managed")
+	}
+	os.Mkdir(filepath.Join(used, "managed-settings.d"), 0o700)
+	if !status(empty, missing, used) {
+		t.Error("managed-settings.d not reported")
+	}
+}
