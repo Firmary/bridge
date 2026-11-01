@@ -38,6 +38,7 @@ no free-text field, and tests enforce this.
 | `cmd/firmary-helper`        | The Helper                                                   |
 | `cmd/fake-relay`            | A local fake relay for development (loopback only)           |
 | `internal/devicekey`        | Device key                                                   |
+| `internal/fsperm`           | Data directory and key ownership checks                      |
 | `internal/pairing`          | Pairing record and code-match derivation                     |
 | `internal/protocol`         | Relay messages, stream events, prompt hash                   |
 | `internal/ticket`           | Turn ticket verification (EdDSA JWT, single use)             |
@@ -52,7 +53,7 @@ no free-text field, and tests enforce this.
 ```sh
 go test ./...
 go run ./cmd/fake-relay            # prints a ws:// URL and a ticket-key file
-go run ./cmd/firmary-helper run --env local --relay-url ws://127.0.0.1:PORT/ --ticket-key-file PATH --data-dir /tmp/fh
+go run ./cmd/firmary-helper run --env local --relay-url ws://127.0.0.1:PORT/ --ticket-key-file PATH --data-dir ~/.firmary-helper-dev
 ```
 
 ## Licence
