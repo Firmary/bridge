@@ -152,6 +152,16 @@ type sessionError string
 
 func (e sessionError) Error() string { return string(e) }
 
+// relayError is the reason for a relay error message. The code is used only if it is a machine name, so a hostile
+// relay can't put text into the log.
+func relayError(b []byte) sessionError {
+	m, _ := protocol.Decode[protocol.RelayError](b)
+	if !protocol.MachineNameRe.MatchString(m.Code) {
+		return sessionError("bad_relay_error")
+	}
+	return sessionError("relay_error_" + m.Code)
+}
+
 func reasonOf(err error) string {
 	var se sessionError
 	switch {
@@ -273,8 +283,7 @@ func (c *Client) session(ctx context.Context, attempt int) error {
 			turns.Wait()
 			return c.revoke()
 		case protocol.TypeError:
-			m, _ := protocol.Decode[protocol.RelayError](b)
-			return sessionError("relay_error_" + m.Code)
+			return relayError(b)
 		default:
 			c.cfg.Log.Log(logx.UnknownMessage, logx.Fields{Reason: typ})
 		}
@@ -397,8 +406,7 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 			}
 			return rec, nil
 		case protocol.TypeError:
-			m, _ := protocol.Decode[protocol.RelayError](b)
-			return none, sessionError("relay_error_" + m.Code)
+			return none, relayError(b)
 		default:
 			return none, sessionError("unexpected_message")
 		}
