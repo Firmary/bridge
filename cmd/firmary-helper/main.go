@@ -162,6 +162,9 @@ func run(args []string) error {
 		ShowPairingCode: func(code string) {
 			fmt.Printf("\nPairing code: %s\nConfirm that Firmary shows the same code, then approve it there.\n\n", code)
 		},
+		ShowPaired: func(firmName string) {
+			fmt.Printf("Paired to %s. If that is not your firm, stop the Helper and unpair it in Firmary.\n", firmName)
+		},
 	})
 	if err != nil {
 		return err

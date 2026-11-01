@@ -9,8 +9,9 @@ Status: **early skeleton (slice S2)**. Not released, not signed, not for use yet
 
 - Creates an Ed25519 **device key** on first run (a `0600` file under the Helper's data directory). No Firmary
   secret is ever stored on disk.
-- **Pairs** with your Firmary account by **code match**: the Helper shows a code it derives itself from its public
-  key and the relay's challenge, and you confirm the same code in Firmary.
+- **Pairs** with your Firmary account by **code match**: the Helper commits to a random nonce, the relay sends its
+  own, the Helper reveals its nonce, and both sides derive the code from the public key and the two nonces. You
+  confirm the same code in Firmary, and the Helper then prints which firm it paired to.
 - Keeps one **outbound WebSocket** (`wss://` only) to the relay, reconnecting with backoff, and announces itself
   with `hello`.
 - Installs its **own pinned copy of Claude Code** from Anthropic's release bucket, verified against Anthropic's
