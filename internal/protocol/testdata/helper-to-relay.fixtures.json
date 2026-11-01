@@ -32,7 +32,6 @@
             "pinnedVersion": "2.1.31",
             "signedIn": true,
             "accountType": "team",
-            "org": "Example Accounting LLC",
             "managed": true,
             "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
           },
@@ -354,6 +353,29 @@
             "signedIn": true,
             "accountType": "team",
             "orgId": "org-Example",
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "hello carrying the provider organisation's display name",
+      "path": "/providers/0/org",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "linux",
+        "arch": "x64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "org": "Example Accounting LLC",
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c",
             "managed": false
           }
         ],

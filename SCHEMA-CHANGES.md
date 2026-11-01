@@ -187,8 +187,9 @@ export const HelperProviderStatus = z.looseObject({
   - Any entry, or a directory that can't be read, counts as managed.
   - Not detected yet: the Windows `HKLM`/`HKCU\SOFTWARE\Policies\ClaudeCode` registry keys, macOS MDM profiles,
     and server-pushed managed settings. These follow in S11.
-- `org` (the display name) is still sent. Whether to drop it in favour of `orgId` is a consent and D7 call
-  for Daniel.
+- **Decided (#1888):** `org`, the organisation's display name, is no longer sent. The Helper doesn't even read
+  `orgName` from `claude auth status`. `orgId` and `managed` stay. The S1 schema now refuses a hello that carries
+  `org` (`org: z.never().optional()`), so the relay can't store it.
 
 ## 4. Ticket claims (review 4 and 5) — `ticket.ts`
 
@@ -207,8 +208,14 @@ export const TicketClaims = z.looseObject({
   - Present means the signed-in `orgId` must be in the list, else `policy` / `provider_org_not_allowed`.
   - A signed-in account with no org id never matches.
   - The Helper treats an explicit `[]` as "none allowed". The schema forbids sending it.
-- What D7's "business only" means, whether that is "any Team/Enterprise plan" or "this firm's organisation", is
-  Daniel's decision. This claim makes the second meaning enforceable on the device.
+- **Decided (#1888):** D7's "business only" means the firm's own provider organisation, not any company's
+  Team/Enterprise plan. The business plan types are `team` and `enterprise` (`BUSINESS_ACCOUNT_TYPES` in S1,
+  `protocol.BusinessAccountTypes` here). The Codex driver adds its names in S9.
+  - The server rule: a ticket whose `accountTypes` allows a business plan type carries `providerOrgIds` with the
+    firm's own organisation ids. A firm with none on record gets no such ticket. A ticket for personal plans only
+    (a firm that allows them) omits the claim.
+  - The Helper rule: it refuses a signed-in business-plan login with `policy` / `provider_org_not_allowed` when
+    the ticket has no `providerOrgIds`. A personal-plan login with no claim still runs.
 - **`iat` rule (verifier, not schema):** the Helper refuses a ticket whose `iat` is earlier than the whole second
   its process started, with `policy` / `ticket_predates_start`. Update the comment on `TicketClaims` to say so.
 
@@ -220,7 +227,7 @@ handling must know them.
 | Class | Pattern | Server action |
 | ----- | ------- | ------------- |
 | `policy` | `ticket_predates_start` | Re-issue the ticket with a fresh `iat`. After any new `hello`, re-issue pending tickets rather than resending them. |
-| `policy` | `provider_org_not_allowed` | Don't retry. Tell the person their Claude login is in another organisation. |
+| `policy` | `provider_org_not_allowed` | Don't retry. Tell the person their Claude login is in another organisation, or is a business plan with no firm organisation on the ticket. |
 | `transient` | `turn_timeout` | The turn ran past the Helper's 15-minute deadline. Don't auto-retry a turn whose output had started. |
 
 Every rejection uses up the ticket, because `Verify` records the id before the device, prompt and status checks.

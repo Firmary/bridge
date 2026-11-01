@@ -1,5 +1,5 @@
 {
-  "$comment": "Each valid document must parse. Each invalid document must fail, with an error at `path` (JSON Pointer). Synthetic values only. Signature, expiry, lifetime, replay, the `turnId` and `promptHash` match and the plan-type check are verifier checks, not schema checks. `path` is where the Zod parse reports the error; a JSON Schema validator may report a parent or union branch instead, so other implementations need only check pass or fail.",
+  "$comment": "Each valid document must parse. Each invalid document must fail, with an error at `path` (JSON Pointer). Synthetic values only. Signature, expiry, lifetime, replay, the `turnId` and `promptHash` match, the plan-type check and the D7 rule that a business plan type needs `providerOrgIds` are verifier checks, not schema checks. `path` is where the Zod parse reports the error; a JSON Schema validator may report a parent or union branch instead, so other implementations need only check pass or fail.",
   "valid": [
     {
       "name": "interactive turn",
@@ -18,7 +18,7 @@
         },
         "maxOutputTokens": 8000,
         "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
-        "accountTypes": ["team", "enterprise"],
+        "accountTypes": ["pro", "max"],
         "iat": 1793500000,
         "exp": 1793500120
       }
@@ -65,7 +65,7 @@
         "consentRevision": 3,
         "maxOutputTokens": 4000,
         "promptHash": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
-        "accountTypes": ["plus", "pro", "team", "enterprise"],
+        "accountTypes": ["plus", "pro"],
         "iat": 1793500000,
         "exp": 1793500120,
         "jti": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2c"

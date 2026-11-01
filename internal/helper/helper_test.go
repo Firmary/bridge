@@ -220,6 +220,9 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	c8 := r.Claims(dev, version, "", testkit.PromptCanary)
 	c8.ProviderOrgIDs = []string{}
 	reject("empty provider org list", "provider_org_not_allowed", c8, "", testkit.PromptCanary)
+	c10 := r.Claims(dev, version, "", testkit.PromptCanary)
+	c10.ProviderOrgIDs = nil
+	reject("business plan without provider orgs", "provider_org_not_allowed", c10, "", testkit.PromptCanary)
 	c9 := r.Claims(dev, version, "", testkit.PromptCanary)
 	empty := ""
 	if err := r.SendRaw(protocol.Turn{Type: protocol.TypeTurn, TurnID: c9.TicketID, Ticket: ticket.Sign(r.TicketKey, c9),
@@ -285,6 +288,29 @@ func (d noAccountType) Status(ctx context.Context, p driver.Profile) (driver.Pro
 	st, err := d.Driver.Status(ctx, p)
 	st.AccountType = ""
 	return st, err
+}
+
+// personalPlan reports the provider signed in on a personal plan.
+type personalPlan struct{ driver.Driver }
+
+func (d personalPlan) Status(ctx context.Context, p driver.Profile) (driver.ProviderStatus, error) {
+	st, err := d.Driver.Status(ctx, p)
+	st.AccountType = "pro"
+	return st, err
+}
+
+// TestPersonalPlanWithoutProviderOrgs: where a firm allows personal plans, a personal-plan login runs a turn whose
+// ticket has no providerOrgIds.
+func TestPersonalPlanWithoutProviderOrgs(t *testing.T) {
+	g := startRig(t, func(h *helper.Helper) { h.Driver = personalPlan{h.Driver} })
+	c := g.r.Claims(g.dev, pinVersion, "", testkit.PromptCanary)
+	c.AccountTypes, c.ProviderOrgIDs = []string{"pro", "max"}, nil
+	if err := g.r.SendTurn(c, "", testkit.PromptCanary); err != nil {
+		t.Fatal(err)
+	}
+	if evs := terminal(t, g.r, c.TicketID); evs[len(evs)-1].T != protocol.EvDone {
+		t.Fatalf("got %+v, want a finished turn", evs)
+	}
 }
 
 // TestEmptyAccountTypeRefused: a signed-in provider without an account type never runs a turn, even for a ticket

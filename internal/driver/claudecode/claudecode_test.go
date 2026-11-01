@@ -107,7 +107,7 @@ func TestEnvironmentScrub(t *testing.T) {
 	prof := driver.Profile{UserID: "u1", Dir: filepath.Join(t.TempDir(), "u1")}
 
 	st, err := d.Status(ctx, prof)
-	if err != nil || !st.SignedIn || st.AccountType != "team" || st.Org != testkit.OrgCanary {
+	if err != nil || !st.SignedIn || st.AccountType != "team" || st.OrgID != testkit.OrgID {
 		t.Fatalf("status %+v %v", st, err)
 	}
 
@@ -201,18 +201,11 @@ func TestStreamUsageEvents(t *testing.T) {
 	}
 }
 
-// TestReportableAccount: an account type that isn't a machine name, or an org name outside 1-200 characters, is
-// not reported.
+// TestReportableAccount: an account type that isn't a machine name is not reported.
 func TestReportableAccount(t *testing.T) {
-	for _, c := range []struct{ typ, org, wantTyp, wantOrg string }{
-		{"team", "Example Accounting LLC", "team", "Example Accounting LLC"},
-		{"Team Plan", "", "", ""},
-		{"", strings.Repeat("é", 200), "", strings.Repeat("é", 200)},
-		{"max", strings.Repeat("x", 201), "max", ""},
-	} {
-		typ, org := reportable(authStatus{SubscriptionType: c.typ, OrgName: c.org})
-		if typ != c.wantTyp || org != c.wantOrg {
-			t.Errorf("%q, %d chars: got %q, %d chars", c.typ, len(c.org), typ, len(org))
+	for _, c := range []struct{ typ, want string }{{"team", "team"}, {"Team Plan", ""}, {"", ""}} {
+		if got := reportable(authStatus{SubscriptionType: c.typ}); got != c.want {
+			t.Errorf("%q: got %q, want %q", c.typ, got, c.want)
 		}
 	}
 }

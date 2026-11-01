@@ -26,7 +26,6 @@ type ProviderStatus struct {
 	Installed   string // installed pinned version, "" if not installed
 	SignedIn    bool   // signed in with a subscription plan (not an API key)
 	AccountType string // provider's plan type, e.g. "pro", "max", "team", "enterprise"
-	Org         string // provider organisation name, if any
 	OrgID       string // provider organisation id (a UUID), if any
 	Managed     bool   // a machine-wide managed settings source for the provider was found (IT policy applies)
 }

@@ -16,6 +16,11 @@ import (
 // MachineNameRe is the protocol's machine-name pattern (limit windows, account types, relay error codes).
 var MachineNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,63}$`)
 
+// BusinessAccountTypes are the plan types of a provider organisation's business plan. D7 (#1888): business-only
+// means the firm's own provider organisation, so a login on one of these plans runs a turn only when the ticket's
+// providerOrgIds lists its org id. The Codex driver adds its plan names in S9.
+var BusinessAccountTypes = []string{"team", "enterprise"}
+
 // Message types.
 const (
 	// Relay -> Helper.
@@ -94,8 +99,8 @@ type ProviderInfo struct {
 	PinnedVersion string `json:"pinnedVersion,omitempty"` // empty before the provider is installed
 	SignedIn      bool   `json:"signedIn"`
 	AccountType   string `json:"accountType,omitempty"`
-	Org           string `json:"org,omitempty"`
-	OrgID         string `json:"orgId,omitempty"`
+	// The provider organisation's display name is deliberately never sent (consent, #1888); OrgID is all D7 needs.
+	OrgID string `json:"orgId,omitempty"`
 	// Managed: machine-wide managed settings for the provider were found, so IT policy (hooks, env, gateways)
 	// applies to turns. False means none were found by the Helper's checks.
 	Managed bool `json:"managed"`
