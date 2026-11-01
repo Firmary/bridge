@@ -142,6 +142,15 @@ func (g *rig) stop() {
 	g.log.Close()
 }
 
+func TestHelloArch(t *testing.T) {
+	if got := helper.HelloArch("amd64"); got != "x64" {
+		t.Errorf("amd64 -> %q, want x64", got)
+	}
+	if got := helper.HelloArch("arm64"); got != "arm64" {
+		t.Errorf("arm64 -> %q, want arm64", got)
+	}
+}
+
 // TestHelperAgainstFakeRelay pairs by code match, says hello, streams a turn, refuses bad tickets, reconnects,
 // handles revoke, and then checks that nothing the Helper must never log reached its data directory.
 func TestHelperAgainstFakeRelay(t *testing.T) {

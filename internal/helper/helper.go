@@ -59,7 +59,7 @@ func (h *Helper) Hello(ctx context.Context, rec pairing.Record) protocol.Hello {
 		Type:          protocol.TypeHello,
 		HelperVersion: h.Version,
 		OS:            runtime.GOOS,
-		Arch:          runtime.GOARCH,
+		Arch:          HelloArch(runtime.GOARCH),
 		Ring:          h.Ring,
 		Providers: []protocol.ProviderInfo{{
 			ID: h.Driver.ID(), PinnedVersion: st.Installed, SignedIn: st.SignedIn, AccountType: st.AccountType, Org: st.Org,
@@ -68,6 +68,14 @@ func (h *Helper) Hello(ctx context.Context, rec pairing.Record) protocol.Hello {
 		// Consent screens arrive with the setup slice; until then nothing beyond revision 0 is accepted.
 		AcceptedConsentRevision: 0,
 	}
+}
+
+// HelloArch is the protocol's name for a Go architecture: amd64 is "x64".
+func HelloArch(goarch string) string {
+	if goarch == "amd64" {
+		return "x64"
+	}
+	return goarch
 }
 
 // Cancel stops a running turn.
