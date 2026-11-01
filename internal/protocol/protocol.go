@@ -10,7 +10,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"regexp"
 )
+
+// MachineNameRe is the protocol's machine-name pattern (limit windows, account types, relay error codes).
+var MachineNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,63}$`)
 
 // Message types.
 const (
@@ -171,19 +175,24 @@ const (
 	ClassPolicy    = "policy"
 )
 
-// LimitWindow is one provider limit window, only as the provider reports it.
+// LimitWindow is one provider limit window, only as the provider reports it. Window is a machine name; UsedPercent
+// is 0-100.
 type LimitWindow struct {
-	Name        string   `json:"name"`
-	Utilization *float64 `json:"utilization,omitempty"`
-	ResetsAt    string   `json:"resetsAt,omitempty"`
+	Window        string   `json:"window"`
+	UsedPercent   *float64 `json:"usedPercent,omitempty"`
+	WindowMinutes int64    `json:"windowMinutes,omitempty"`
+	ResetsAt      string   `json:"resetsAt,omitempty"`
 }
+
+// MaxLimitWindows is the most windows one usage event carries.
+const MaxLimitWindows = 16
 
 // TokenCounts are token counts as the provider reports them.
 type TokenCounts struct {
-	Input         int64 `json:"input"`
-	Output        int64 `json:"output"`
-	CacheRead     int64 `json:"cacheRead,omitempty"`
-	CacheCreation int64 `json:"cacheCreation,omitempty"`
+	Input      int64 `json:"input"`
+	Output     int64 `json:"output"`
+	CacheRead  int64 `json:"cacheRead,omitempty"`
+	CacheWrite int64 `json:"cacheWrite,omitempty"`
 }
 
 // StreamEvent is the tagged union from build plan §4.2. Use the constructors so each kind carries only its fields.

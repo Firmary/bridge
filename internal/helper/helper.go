@@ -185,7 +185,7 @@ func (h *Helper) HandleTurn(ctx context.Context, rec pairing.Record, t protocol.
 		case protocol.EvUsage:
 			windows = windows[:0]
 			for _, w := range e.Windows {
-				windows = append(windows, logx.Window{Name: w.Name, Utilization: w.Utilization, ResetsAt: w.ResetsAt})
+				windows = append(windows, logx.Window{Name: w.Window, UsedPercent: w.UsedPercent, ResetsAt: w.ResetsAt})
 			}
 		case protocol.EvLimit:
 			h.Log.Log(logx.ProviderLimitHit, logx.Fields{TicketID: c.TicketID, Provider: h.Driver.ID()})

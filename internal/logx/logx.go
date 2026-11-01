@@ -44,7 +44,7 @@ const (
 // Window is one provider limit window, as the provider reports it.
 type Window struct {
 	Name        string   `json:"name"`
-	Utilization *float64 `json:"utilization,omitempty"`
+	UsedPercent *float64 `json:"usedPercent,omitempty"`
 	ResetsAt    string   `json:"resetsAt,omitempty"`
 }
 
@@ -87,7 +87,7 @@ func (f Fields) sanitized() Fields {
 	if f.Windows != nil {
 		ws := make([]Window, len(f.Windows))
 		for i, w := range f.Windows {
-			ws[i] = Window{Name: clean(w.Name), Utilization: w.Utilization, ResetsAt: clean(w.ResetsAt)}
+			ws[i] = Window{Name: clean(w.Name), UsedPercent: w.UsedPercent, ResetsAt: clean(w.ResetsAt)}
 		}
 		f.Windows = ws
 	}
