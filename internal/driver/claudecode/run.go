@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -138,7 +140,7 @@ type resultMsg struct {
 
 func (r *resultMsg) tokens() *protocol.TokenCounts {
 	u := r.Usage
-	return &protocol.TokenCounts{Input: u.InputTokens, Output: u.OutputTokens, CacheRead: u.CacheRead, CacheCreation: u.CacheCreation}
+	return &protocol.TokenCounts{Input: u.InputTokens, Output: u.OutputTokens, CacheRead: u.CacheRead, CacheWrite: u.CacheCreation}
 }
 
 type rateWindow struct {
@@ -182,6 +184,20 @@ func isoTime(sec *float64) string {
 		s /= 1000
 	}
 	return time.Unix(int64(s), 0).UTC().Format(time.RFC3339)
+}
+
+// limitWindow converts one Claude Code rate-limit window. Claude Code reports utilization as a 0-1 fraction; the
+// protocol wants a 0-100 percentage. A window whose name isn't a machine name is dropped.
+func limitWindow(name string, utilization, resetsAt *float64) (protocol.LimitWindow, bool) {
+	if !protocol.MachineNameRe.MatchString(name) {
+		return protocol.LimitWindow{}, false
+	}
+	w := protocol.LimitWindow{Window: name, ResetsAt: isoTime(resetsAt)}
+	if utilization != nil && !math.IsNaN(*utilization) && !math.IsInf(*utilization, 0) {
+		p := min(max(*utilization*100, 0), 100)
+		w.UsedPercent = &p
+	}
+	return w, true
 }
 
 func (s *streamState) line(b []byte) []protocol.StreamEvent {
@@ -228,11 +244,21 @@ func (s *streamState) line(b []byte) []protocol.StreamEvent {
 			return nil
 		}
 		var ws []protocol.LimitWindow
-		for name, w := range info.UnifiedWindows {
-			ws = append(ws, protocol.LimitWindow{Name: name, Utilization: w.Utilization, ResetsAt: isoTime(w.ResetsAt)})
+		names := make([]string, 0, len(info.UnifiedWindows))
+		for name := range info.UnifiedWindows {
+			names = append(names, name)
 		}
-		if len(ws) == 0 && info.RateLimitType != "" {
-			ws = []protocol.LimitWindow{{Name: info.RateLimitType, Utilization: info.Utilization, ResetsAt: isoTime(info.ResetsAt)}}
+		slices.Sort(names)
+		for _, name := range names {
+			w := info.UnifiedWindows[name]
+			if lw, ok := limitWindow(name, w.Utilization, w.ResetsAt); ok && len(ws) < protocol.MaxLimitWindows {
+				ws = append(ws, lw)
+			}
+		}
+		if len(info.UnifiedWindows) == 0 && info.RateLimitType != "" {
+			if lw, ok := limitWindow(info.RateLimitType, info.Utilization, info.ResetsAt); ok {
+				ws = []protocol.LimitWindow{lw}
+			}
 		}
 		if info.Status == "rejected" {
 			return []protocol.StreamEvent{protocol.Limit(isoTime(info.ResetsAt))}

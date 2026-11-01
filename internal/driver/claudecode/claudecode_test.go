@@ -181,6 +181,25 @@ func TestInputNeverStartsWithPrompt(t *testing.T) {
 	}
 }
 
+// TestStreamUsageEvents: rate-limit windows become machine-named windows with a 0-100 usedPercent, a window with
+// any other name is dropped, and cache-creation tokens are reported as cacheWrite.
+func TestStreamUsageEvents(t *testing.T) {
+	var s streamState
+	evs := s.line([]byte(`{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour",` +
+		`"unifiedWindows":{"five_hour":{"utilization":0.25,"resetsAt":1800000000},"Weekly Opus!":{"utilization":0.5}}}}`))
+	if len(evs) != 1 || evs[0].T != protocol.EvUsage || len(evs[0].Windows) != 1 {
+		t.Fatalf("usage events %+v", evs)
+	}
+	w := evs[0].Windows[0]
+	if w.Window != "five_hour" || w.UsedPercent == nil || *w.UsedPercent != 25 || w.ResetsAt != "2027-01-15T08:00:00Z" {
+		t.Fatalf("window %+v", w)
+	}
+	s.line([]byte(`{"type":"result","usage":{"input_tokens":1,"output_tokens":2,"cache_read_input_tokens":3,"cache_creation_input_tokens":4}}`))
+	if tok := s.result.tokens(); tok.CacheRead != 3 || tok.CacheWrite != 4 {
+		t.Fatalf("tokens %+v", tok)
+	}
+}
+
 // TestManagedSettingsReported: an empty or missing managed directory is not managed; any entry in one is.
 func TestManagedSettingsReported(t *testing.T) {
 	empty, used := t.TempDir(), t.TempDir()
