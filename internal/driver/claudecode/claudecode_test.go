@@ -200,6 +200,22 @@ func TestStreamUsageEvents(t *testing.T) {
 	}
 }
 
+// TestReportableAccount: an account type that isn't a machine name, or an org name outside 1-200 characters, is
+// not reported.
+func TestReportableAccount(t *testing.T) {
+	for _, c := range []struct{ typ, org, wantTyp, wantOrg string }{
+		{"team", "Example Accounting LLC", "team", "Example Accounting LLC"},
+		{"Team Plan", "", "", ""},
+		{"", strings.Repeat("é", 200), "", strings.Repeat("é", 200)},
+		{"max", strings.Repeat("x", 201), "max", ""},
+	} {
+		typ, org := reportable(authStatus{SubscriptionType: c.typ, OrgName: c.org})
+		if typ != c.wantTyp || org != c.wantOrg {
+			t.Errorf("%q, %d chars: got %q, %d chars", c.typ, len(c.org), typ, len(org))
+		}
+	}
+}
+
 // TestManagedSettingsReported: an empty or missing managed directory is not managed; any entry in one is.
 func TestManagedSettingsReported(t *testing.T) {
 	empty, used := t.TempDir(), t.TempDir()

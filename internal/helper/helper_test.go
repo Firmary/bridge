@@ -271,6 +271,29 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 // TestDroppedConnectionCancelsTurn: when the connection drops during a turn, the turn is cancelled and the Helper
 // reconnects at once instead of waiting for the turn to finish. A turn that runs past the Helper's deadline ends
 // with a turn_timeout error.
+// noAccountType reports the provider signed in but with no (reportable) account type.
+type noAccountType struct{ driver.Driver }
+
+func (d noAccountType) Status(ctx context.Context, p driver.Profile) (driver.ProviderStatus, error) {
+	st, err := d.Driver.Status(ctx, p)
+	st.AccountType = ""
+	return st, err
+}
+
+// TestEmptyAccountTypeRefused: a signed-in provider without an account type never runs a turn, even for a ticket
+// that lists an empty account type.
+func TestEmptyAccountTypeRefused(t *testing.T) {
+	g := startRig(t, func(h *helper.Helper) { h.Driver = noAccountType{h.Driver} })
+	c := g.r.Claims(g.dev, pinVersion, "", testkit.PromptCanary)
+	c.AccountTypes = []string{"team", ""}
+	if err := g.r.SendTurn(c, "", testkit.PromptCanary); err != nil {
+		t.Fatal(err)
+	}
+	if evs := terminal(t, g.r, c.TicketID); len(evs) != 1 || evs[0].Pattern != "account_type_not_allowed" {
+		t.Fatalf("got %+v, want error account_type_not_allowed", evs)
+	}
+}
+
 func TestDroppedConnectionCancelsTurn(t *testing.T) {
 	g := startRig(t, func(h *helper.Helper) { h.TurnTimeout = 2 * time.Second })
 	r := g.r
