@@ -5,7 +5,14 @@ package claudecode
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -63,6 +70,82 @@ func TestRealPinnedClaudeCode(t *testing.T) {
 	for _, e := range events {
 		if e.T == protocol.EvTextDelta {
 			t.Fatalf("signed-out turn emitted text %q", e.Text)
+		}
+	}
+}
+
+// Canaries for TestRealNoLocalContextReachesAPI. Synthetic values only.
+const (
+	gitCommitCanary    = "GIT_COMMIT_CANARY_91"
+	gitUntrackedCanary = "UNTRACKED_FILE_CANARY_37"
+)
+
+// TestRealNoLocalContextReachesAPI runs the real pinned Claude Code (same opt-in as TestRealPinnedClaudeCode) with
+// HOME set to a git repository above the profile, as a dotfiles setup would have. Claude Code is pointed at a local
+// stub that records every request and answers 400, with a dummy key: no account, no traffic to Anthropic's API.
+// Nothing about the repository (commit messages, untracked file names) may appear in any request.
+func TestRealNoLocalContextReachesAPI(t *testing.T) {
+	root := os.Getenv("FIRMARY_HELPER_REAL_CLAUDE")
+	if root == "" {
+		t.Skip("set FIRMARY_HELPER_REAL_CLAUDE to an install directory to run")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	home := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.email=test@example.invalid", "-c", "user.name=test"}, args...)...)
+		cmd.Dir = home
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + home, "GIT_CONFIG_NOSYSTEM=1"}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("commit", "-q", "--allow-empty", "-m", gitCommitCanary)
+	if err := os.WriteFile(filepath.Join(home, gitUntrackedCanary), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var bodies []string
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		bodies = append(bodies, r.URL.Path+"\n"+string(b))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, `{"type":"error","error":{"type":"invalid_request_error","message":"recorded by test stub"}}`)
+	}))
+	defer stub.Close()
+
+	d, err := New(root, WithEnviron(func() []string { return []string{"PATH=/usr/bin:/bin", "HOME=" + home} }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Ensure(ctx, BuiltInPin); err != nil {
+		t.Fatal(err)
+	}
+	d.extraEnv = map[string]string{
+		"ANTHROPIC_BASE_URL": stub.URL, "ANTHROPIC_API_KEY": "test-dummy-not-a-key",
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+	}
+	prof := driver.Profile{UserID: "u1", Dir: filepath.Join(home, ".local", "share", "firmary-helper", "prod", "profiles", "u1", "claude-code")}
+
+	_ = d.Run(ctx, prof, driver.Turn{ID: "real-git", Model: "claude-sonnet-4-5", Prompt: "Reply with the single word: pong",
+		MaxOutputTokens: 200}, func(protocol.StreamEvent) {})
+
+	mu.Lock()
+	all := strings.Join(bodies, "\n")
+	mu.Unlock()
+	if !strings.Contains(all, "/v1/messages") || !strings.Contains(all, "pong") {
+		t.Fatalf("the stub saw no messages request with the prompt; the test proves nothing (%d requests)", len(bodies))
+	}
+	for _, c := range []string{gitCommitCanary, gitUntrackedCanary} {
+		if strings.Contains(all, c) {
+			t.Errorf("%s from the repository above the profile reached the API", c)
 		}
 	}
 }

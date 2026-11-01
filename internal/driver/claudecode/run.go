@@ -63,9 +63,11 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 
 	cmd := exec.CommandContext(ctx, bin, runArgs(t.Model)...)
 	cmd.Dir = workDir(p)
-	cmd.Env = Env(d.environ(), configDir(p), map[string]string{
-		"CLAUDE_CODE_MAX_OUTPUT_TOKENS": strconv.Itoa(t.MaxOutputTokens),
-	})
+	set := map[string]string{"CLAUDE_CODE_MAX_OUTPUT_TOKENS": strconv.Itoa(t.MaxOutputTokens)}
+	for k, v := range d.extraEnv {
+		set[k] = v
+	}
+	cmd.Env = Env(d.environ(), configDir(p), set)
 	cmd.Stdin = strings.NewReader(input(t))
 	// stderr is kept in memory, bounded, only to classify a failure. It is never logged or forwarded.
 	var stderr bytes.Buffer
