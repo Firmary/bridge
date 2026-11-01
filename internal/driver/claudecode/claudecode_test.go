@@ -128,13 +128,13 @@ func TestEnvironmentScrub(t *testing.T) {
 	}
 	// PWD and SHLVL are set by the shell running the fake itself.
 	allowedSeen := []string{"PATH", "HOME", "LANG", "LC_ALL", "https_proxy", "CLAUDE_CONFIG_DIR", "DISABLE_UPDATES",
-		"DISABLE_AUTOUPDATER", "CLAUDE_CODE_MAX_OUTPUT_TOKENS", "PWD", "SHLVL", "OLDPWD", "_"}
+		"DISABLE_AUTOUPDATER", "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS", "CLAUDE_CODE_MAX_OUTPUT_TOKENS", "PWD", "SHLVL", "OLDPWD", "_"}
 	for k := range got {
 		if !slices.Contains(allowedSeen, k) {
 			t.Errorf("unexpected variable reached claude: %s", k)
 		}
 	}
-	if got["CLAUDE_CONFIG_DIR"] != filepath.Join(prof.Dir, "config") || got["DISABLE_UPDATES"] != "1" ||
+	if got["CLAUDE_CONFIG_DIR"] != filepath.Join(prof.Dir, "config") || got["DISABLE_UPDATES"] != "1" || got["CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS"] != "1" ||
 		got["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] != "1000" || got["PATH"] != "/usr/bin:/bin" {
 		t.Errorf("helper settings wrong: %v", got)
 	}

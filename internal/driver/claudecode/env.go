@@ -48,6 +48,9 @@ func Env(inherited []string, configDir string, set map[string]string) []string {
 	// Anthropic's documented switch for distributing a pinned Claude Code through your own channel.
 	env["DISABLE_UPDATES"] = "1"
 	env["DISABLE_AUTOUPDATER"] = "1"
+	// Without this Claude Code attaches git status and recent commit messages from any repository above its working
+	// directory (for example a dotfiles repo at HOME) to the first message.
+	env["CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS"] = "1"
 	for k, v := range set {
 		env[k] = v
 	}

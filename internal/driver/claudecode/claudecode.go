@@ -31,6 +31,8 @@ type Driver struct {
 	http     *http.Client
 	platform string
 	environ  func() []string
+	// extraEnv is set only by in-package tests (to point a real binary at a recording stub API).
+	extraEnv map[string]string
 
 	mu      sync.Mutex
 	version string
