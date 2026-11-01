@@ -132,7 +132,7 @@ func (h *Helper) check(ctx context.Context, rec pairing.Record, t protocol.Turn)
 		return c, st, protocol.ClassPolicy, "pin_mismatch"
 	case !st.SignedIn:
 		return c, st, protocol.ClassAuth, "not_signed_in"
-	case !slices.Contains(c.AccountTypes, st.AccountType):
+	case st.AccountType == "" || !slices.Contains(c.AccountTypes, st.AccountType):
 		return c, st, protocol.ClassPolicy, "account_type_not_allowed"
 	case c.ProviderOrgIDs != nil && (st.OrgID == "" || !slices.Contains(c.ProviderOrgIDs, st.OrgID)):
 		// Present means "only these provider organisations"; an empty list allows none.

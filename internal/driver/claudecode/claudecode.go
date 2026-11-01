@@ -17,10 +17,12 @@ import (
 	"runtime"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 
 	"github.com/Firmary/firmary-helper/internal/driver"
+	"github.com/Firmary/firmary-helper/internal/protocol"
 )
 
 // ID is the provider id used in hello and logs.
@@ -157,6 +159,18 @@ type authStatus struct {
 // ticket's providerOrgIds.
 var orgIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
+// reportable returns the account type and org name to report, each emptied if the hello schema would refuse it: one
+// bad value would reject the whole hello. The account type must be a machine name, the org 1-200 characters.
+func reportable(s authStatus) (accountType, org string) {
+	if protocol.MachineNameRe.MatchString(s.SubscriptionType) {
+		accountType = s.SubscriptionType
+	}
+	if n := utf8.RuneCountInString(s.OrgName); n >= 1 && n <= 200 {
+		org = s.OrgName
+	}
+	return accountType, org
+}
+
 // Status runs `claude auth status --json` in the profile. Signed in means a claude.ai subscription login with
 // Anthropic as the API provider and no API key in play; anything else reports signed out.
 func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderStatus, error) {
@@ -188,7 +202,8 @@ func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderS
 	}
 	st := driver.ProviderStatus{Installed: version, Managed: managed}
 	if s.LoggedIn && s.AuthMethod == "claude.ai" && s.APIProvider == "firstParty" && (s.APIKeySource == "" || s.APIKeySource == "none") {
-		st.SignedIn, st.AccountType, st.Org = true, s.SubscriptionType, s.OrgName
+		st.SignedIn = true
+		st.AccountType, st.Org = reportable(s)
 		if orgIDRe.MatchString(s.OrgID) {
 			st.OrgID = s.OrgID
 		}
