@@ -71,6 +71,13 @@ func TestVerify(t *testing.T) {
 	if _, err := v2.Verify(Sign(nextPriv, good())); err != nil {
 		t.Errorf("next key: %v", err)
 	}
+	// A ticket issued before this Verifier (the process) started is refused, even if unused and unexpired: the
+	// ids a previous process saw are gone after a restart.
+	v3 := NewVerifier([]ed25519.PublicKey{pub}, func() time.Time { return now })
+	early := with(func(c *Claims) { c.TicketID = "t3"; c.IssuedAt -= 1; c.ExpiresAt -= 1 })
+	if _, err := v3.Verify(early); !errors.Is(err, ReasonPredatesStart) {
+		t.Errorf("issued before start: got %v", err)
+	}
 	// No pinned keys: refuse everything.
 	if _, err := NewVerifier(nil, nil).Verify(Sign(priv, good())); !errors.Is(err, ReasonNoKeys) {
 		t.Errorf("no keys: got %v", err)

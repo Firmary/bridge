@@ -68,12 +68,17 @@ const (
 	ReasonLifetime      Reason = "ticket_lifetime_too_long"
 	ReasonMissingClaims Reason = "ticket_missing_claims"
 	ReasonReplayed      Reason = "ticket_replayed"
+	ReasonPredatesStart Reason = "ticket_predates_start"
 )
 
 // Verifier checks tickets against pinned public keys and remembers used ticket ids.
+//
+// Used ids are kept in memory only. So that a restart can't make a used ticket valid again, a ticket issued before
+// the second the Verifier was created (process start) is refused; the server re-issues it.
 type Verifier struct {
-	keys []ed25519.PublicKey
-	now  func() time.Time
+	keys    []ed25519.PublicKey
+	now     func() time.Time
+	started int64 // Unix seconds
 
 	mu   sync.Mutex
 	seen map[string]time.Time
@@ -84,7 +89,7 @@ func NewVerifier(keys []ed25519.PublicKey, now func() time.Time) *Verifier {
 	if now == nil {
 		now = time.Now
 	}
-	return &Verifier{keys: keys, now: now, seen: map[string]time.Time{}}
+	return &Verifier{keys: keys, now: now, started: now().Unix(), seen: map[string]time.Time{}}
 }
 
 var b64 = base64.RawURLEncoding
@@ -157,6 +162,8 @@ func (v *Verifier) Verify(token string) (Claims, error) {
 		return Claims{}, ReasonNotYetValid
 	case !now.Before(exp.Add(ClockSkew)):
 		return Claims{}, ReasonExpired
+	case c.IssuedAt < v.started:
+		return Claims{}, ReasonPredatesStart
 	}
 	if c.TicketID == "" || c.DeviceID == "" || c.UserID == "" || c.FirmID == "" || c.Adapter == "" ||
 		c.Model == "" || c.Pin == "" || c.PromptHash == "" || c.Trigger.Kind == "" || c.MaxOutputTokens <= 0 ||
