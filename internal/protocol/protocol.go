@@ -201,7 +201,7 @@ type StreamEvent struct {
 	T                 string        `json:"t"`
 	Model             string        `json:"model,omitempty"`
 	Text              string        `json:"text,omitempty"`
-	Windows           []LimitWindow `json:"windows,omitempty"`
+	Windows           []LimitWindow `json:"windows,omitzero"` // usage always has it, possibly []
 	Tokens            *TokenCounts  `json:"tokens,omitempty"`
 	ResetsAt          string        `json:"resetsAt,omitempty"`
 	Class             string        `json:"class,omitempty"`
@@ -212,6 +212,9 @@ type StreamEvent struct {
 func Start(model string) StreamEvent    { return StreamEvent{T: EvStart, Model: model} }
 func TextDelta(text string) StreamEvent { return StreamEvent{T: EvTextDelta, Text: text} }
 func Usage(ws []LimitWindow, tok *TokenCounts) StreamEvent {
+	if ws == nil {
+		ws = []LimitWindow{} // the contract requires windows on a usage event
+	}
 	return StreamEvent{T: EvUsage, Windows: ws, Tokens: tok}
 }
 func Limit(resetsAt string) StreamEvent { return StreamEvent{T: EvLimit, ResetsAt: resetsAt} }
