@@ -1,10 +1,13 @@
-// Package testkit has test fixtures shared by package tests: a signed fake Claude Code release server and a fake
-// `claude` executable. It is imported only from _test.go files.
+// Package testkit has test fixtures shared by package tests: a signed fake Claude Code release server, a fake Codex
+// GitHub release, and fake `claude` and `codex` executables. It is imported only from _test.go files.
 package testkit
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -29,7 +32,11 @@ const (
 	// OrgID is the provider organisation id the fake claude reports.
 	OrgID     = "0f6c2b1e-5d4a-4c3b-9a28-7e1f0d9c8b7a"
 	EnvCanary = "sk-ant-oat01-ENV_CANARY_e6"
-	// SlowPrompt makes the fake claude sleep for a minute before replying.
+	// CodexAccountID is the ChatGPT account (workspace) id the fake codex's login reports.
+	CodexAccountID = "5b0e4c1d-2a3f-4e6b-8c7d-9f0a1b2c3d4e"
+	// DeviceCode is the one-time code the fake codex prints for a device-link sign-in.
+	DeviceCode = "WXYZ-12345"
+	// SlowPrompt makes the fake claude or codex sleep for a minute before replying.
 	SlowPrompt = "SLOW_TURN_PROMPT_3b"
 )
 
@@ -131,4 +138,120 @@ func ReadDir(t *testing.T, dir string) string {
 		return nil
 	})
 	return all.String()
+}
+
+// TarEntry is one file in a test release archive.
+type TarEntry struct {
+	Name string
+	Body []byte
+	Type byte // tar.TypeReg if zero
+}
+
+// TarGz builds a gzip-compressed tar archive. A non-regular entry is written as a symlink to /etc/passwd.
+func TarGz(t *testing.T, entries ...TarEntry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, e := range entries {
+		h := &tar.Header{Name: e.Name, Mode: 0o755, Size: int64(len(e.Body)), Typeflag: e.Type}
+		if h.Typeflag == 0 {
+			h.Typeflag = tar.TypeReg
+		}
+		if h.Typeflag != tar.TypeReg {
+			h.Size, h.Linkname = 0, "/etc/passwd"
+		}
+		if err := tw.WriteHeader(h); err != nil {
+			t.Fatal(err)
+		}
+		if h.Typeflag == tar.TypeReg {
+			tw.Write(e.Body)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	gz.Close()
+	return buf.Bytes()
+}
+
+// CodexRelease is a fake GitHub release for one Codex version and target: it serves
+// /rust-v<version>/codex-<target>.tar.gz holding the one executable.
+type CodexRelease struct {
+	URL           string
+	SHA256        string // the executable
+	ArchiveSHA256 string // the archive
+	// ServeArchive, if set before calling Ensure, is served instead of the genuine archive.
+	ServeArchive []byte
+}
+
+// NewCodexRelease serves a genuine archive for target (for example "x86_64-unknown-linux-musl") holding bin.
+func NewCodexRelease(t *testing.T, version, target string, bin []byte) *CodexRelease {
+	t.Helper()
+	member := "codex-" + target
+	archive := TarGz(t, TarEntry{Name: member, Body: bin})
+	sum, asum := sha256.Sum256(bin), sha256.Sum256(archive)
+	r := &CodexRelease{SHA256: hex.EncodeToString(sum[:]), ArchiveSHA256: hex.EncodeToString(asum[:])}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/rust-v"+version+"/"+member+".tar.gz", func(w http.ResponseWriter, _ *http.Request) {
+		if r.ServeArchive != nil {
+			w.Write(r.ServeArchive)
+			return
+		}
+		w.Write(archive)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	r.URL = srv.URL
+	return r
+}
+
+// CodexAuthJSON is a synthetic ChatGPT auth.json, as Codex writes into CODEX_HOME after sign-in: an unsigned
+// id_token with plan type planType, the CodexAccountID workspace and EmailCanary, and canary tokens.
+func CodexAuthJSON(planType string) string {
+	b64 := func(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) }
+	claims := `{"email":"` + EmailCanary + `","https://api.openai.com/auth":{"chatgpt_plan_type":"` + planType +
+		`","chatgpt_account_id":"` + CodexAccountID + `","chatgpt_user_id":"user-synthetic"}}`
+	idToken := b64(`{"alg":"none","typ":"JWT"}`) + "." + b64(claims) + ".c3ludGhldGlj"
+	return `{"auth_mode":"chatgpt","OPENAI_API_KEY":null,"tokens":{"id_token":"` + idToken +
+		`","access_token":"` + EnvCanary + `","refresh_token":"` + EnvCanary + `","account_id":"` + CodexAccountID + `"}}`
+}
+
+// FakeCodex returns a POSIX shell script standing in for `codex`. `login` prints a sign-in link (and, with
+// --device-auth, DeviceCode) to stderr the way Codex 0.166.0 does, then writes CodexAuthJSON("business") into
+// CODEX_HOME; `login status` reports from that file; `logout` removes it. `exec` records its environment, arguments,
+// working directory and stdin under dumpDir, writes a canary to stderr, and prints a JSONL turn that contains
+// OutputCanary. A prompt containing SlowPrompt sleeps for a minute first.
+func FakeCodex(dumpDir string) []byte {
+	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+	lines := []string{
+		`{"type":"thread.started","thread_id":"thread-1"}`,
+		`{"type":"item.completed","item":{"id":"item_0","type":"error","message":"a Codex warning ` + StderrCanary + `"}}`,
+		`{"type":"turn.started"}`,
+		`{"type":"item.completed","item":{"id":"item_1","type":"reasoning","text":"thinking"}}`,
+		`{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"Hello ` + OutputCanary + `"}}`,
+		`{"type":"turn.completed","usage":{"input_tokens":21,"cached_input_tokens":4,"cache_write_input_tokens":2,"output_tokens":3,"reasoning_output_tokens":1}}`,
+	}
+	var b strings.Builder
+	b.WriteString("#!/bin/sh\n")
+	b.WriteString(`if [ "$1" = "login" ] && [ "$2" = "status" ]; then` + "\n")
+	b.WriteString(`  if [ -f "$CODEX_HOME/auth.json" ]; then echo 'Logged in using ChatGPT' >&2; exit 0; fi` + "\n")
+	b.WriteString("  echo 'Not logged in' >&2; exit 1\nfi\n")
+	b.WriteString(`if [ "$1" = "login" ]; then` + "\n")
+	b.WriteString(`  case " $* " in *" --device-auth "*)` + "\n")
+	b.WriteString(`    printf '\033[1mFollow these steps\033[0m\n   https://auth.openai.com/codex/device\n\n   Enter this one-time code\n   \033[94m%s\033[0m\n' ` + q(DeviceCode) + " >&2;;\n")
+	b.WriteString(`  *) printf 'Starting local login server on http://localhost:1455.\nnavigate to this URL:\n\nhttps://auth.openai.com/oauth/authorize?response_type=code&client_id=app_X&state=abc\n\n' >&2;;` + "\n")
+	b.WriteString("  esac\n  sleep 0.2\n")
+	b.WriteString(`  printf '%s' ` + q(CodexAuthJSON("business")) + ` > "$CODEX_HOME/auth.json"; exit 0` + "\nfi\n")
+	b.WriteString(`if [ "$1" = "logout" ]; then rm -f "$CODEX_HOME/auth.json"; exit 0; fi` + "\n")
+	b.WriteString("env > " + q(filepath.Join(dumpDir, "env")) + "\n")
+	b.WriteString(`for a in "$@"; do printf '[%s]\n' "$a"; done > ` + q(filepath.Join(dumpDir, "args")) + "\n")
+	b.WriteString("pwd > " + q(filepath.Join(dumpDir, "cwd")) + "\n")
+	b.WriteString("cat > " + q(filepath.Join(dumpDir, "stdin")) + "\n")
+	b.WriteString("if grep -q " + SlowPrompt + " " + q(filepath.Join(dumpDir, "stdin")) + "; then sleep 60; fi\n")
+	b.WriteString("echo " + q(StderrCanary+" raw provider error text") + " >&2\n")
+	for _, l := range lines {
+		b.WriteString("printf '%s\\n' " + q(l) + "\n")
+	}
+	return []byte(b.String())
 }
