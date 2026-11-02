@@ -1,26 +1,57 @@
-# Firmary Helper
+# bridge
 
-A small open-source program that keeps one outgoing connection from your computer (or your own server) to the
-Firmary relay, and runs Anthropic's Claude Code on **your own plan** when **you** ask for something in Firmary.
+The Firmary **local bridge**: a small program that runs on a person's own computer (or their own always-on server)
+and lets Firmary use **their own** Claude or ChatGPT plan. It keeps one outgoing connection to Firmary's relay and,
+only when that person asks for something in Firmary, runs their provider's app with their sign-in and streams the
+answer back.
 
-Status: **early skeleton (slice S2)**. Not released, not signed, not for use yet.
+People see it as the **Firmary Helper**. That name is not final: it lives in one constant,
+[`internal/brand/brand.go`](internal/brand/brand.go), and a test fails if any other Go file spells it out.
 
-## What it does
+Status: **first slice, not released, not signed, not for use yet.**
 
-- Creates an Ed25519 **device key** on first run (a `0600` file under the Helper's data directory). No Firmary
-  secret is ever stored on disk.
-- **Pairs** with your Firmary account by **code match**: the Helper commits to a random nonce, the relay sends its
-  own, the Helper reveals its nonce, and both sides derive the code from the public key and the two nonces. You
-  confirm the same code in Firmary, and the Helper then prints which firm it paired to.
-- Keeps one **outbound WebSocket** (`wss://` only) to the relay, reconnecting with backoff, and announces itself
-  with `hello`.
-- Installs its **own pinned copy of Claude Code** from Anthropic's release bucket, verified against Anthropic's
-  GPG-signed release manifest *and* the checksum Firmary pins, and runs it with Anthropic's updater off, its own
-  profile directory, **no tools**, and a **scrubbed environment** so it can only use the plan you signed in with.
-- Runs a turn only for a ticket signed by Firmary's pinned key, for this device and its paired user, unexpired,
-  unused, and matching the prompt hash.
+## Where this comes from
 
-Your own Claude Code install and login are never touched.
+- Design: design studio `5877e3252806` ("local bridge" walkthrough, from chat #1825). The screens this repo serves
+  are "Always-on server" (the only terminal people ever see), "Helper on this computer" (restart, what the firm
+  sees, permissions) and "On the computer" (installers on macOS, Windows and Ubuntu).
+- Plan: `reviews/personal-ai-relay-build-plan-2026-11-01.md` (decisions G1–G11, slices S0–S18). This repo is the
+  plan's Helper repo ("H").
+- History: the S2 skeleton was built and security-reviewed in a local `firmary-helper` repo
+  (`reviews/firmary-helper-s2-security-review-2026-11-01.md`); its commits are kept here as they were.
+
+## What works in this slice
+
+- **Device key.** An Ed25519 key, created on first run in a `0600` file under the data directory. No Firmary secret
+  is ever stored on disk.
+- **Pairing by code match.** The Helper commits to a random value, the relay sends its own, the Helper reveals its
+  value, and both sides derive the same `ABCD-EFGH` code. The person confirms it in Firmary, then the Helper prints
+  which firm it paired to.
+- **One outgoing connection.** A `wss://` WebSocket to the relay with reconnect and backoff, plus `hello`. Nothing
+  listens on the computer and no ports are opened.
+- **Its own pinned Claude Code.** The Helper installs its own copy from Anthropic's release bucket and checks it
+  against Anthropic's signed manifest *and* a checksum Firmary pins. It runs that copy with the updater off, a
+  separate profile, no tools and a cleaned environment. The person's own Claude Code install and login are never
+  touched.
+- **Turns.** A turn runs only with a ticket signed by Firmary's pinned key that is for this device and its paired
+  user, unexpired, unused and matches the prompt.
+- **The design's terminal copy.** The Helper prints the "Always-on server" transcript: name, version and computer,
+  `ok  Reached Firmary (outgoing only, nothing to open)`, `Confirm this code in Firmary:`, and
+  `ok  Paired to <firm>`.
+  The code is in [`internal/console`](internal/console), and tests pin it to the design.
+
+## What is stubbed or not built yet
+
+| Design piece                                                   | Where it lands                       |
+| -------------------------------------------------------------- | ------------------------------------ |
+| Firmary's relay, pairing API and ticket signer                 | firmary-os S3 (here: fake relay)     |
+| Real relay addresses and ticket keys                           | S3; with no pinned key every turn is refused |
+| Codex (ChatGPT) driver, browser and device-link sign-in        | S9                                   |
+| Claude Code sign-in from the Helper, test request, usage bars  | S9/S10 and firmary-os S11            |
+| Always-on server: one-line install, start with the server, "Always on" | S10                          |
+| Silent self-update                                             | S5                                   |
+| Signed installers (`.dmg`, `.exe`, `.deb`), menu-bar/tray icon, Helper window | S15                   |
+| Health card, Devices list, admin view                          | firmary-os S11 (not in this repo)    |
 
 ## What it never logs
 
@@ -28,33 +59,46 @@ Local logs (`logs/helper.log`, 5 x 1 MB, rotating) carry metadata only: timestam
 provider, model, duration, token counts, limit windows, error class and pattern name, versions.
 
 Never logged: prompts, context, outputs, file contents, tokens and credentials, sign-in URLs and codes, the
-pairing code, environment variables, raw provider error text, and the stdout or stderr of `claude`. The logger has
-no free-text field, and tests enforce this.
+pairing code, the firm name, environment variables, raw provider error text, and the stdout or stderr of `claude`.
+The logger has no free-text field, and tests enforce this.
 
 ## Layout
 
-| Path                        | What                                                         |
-| --------------------------- | ------------------------------------------------------------ |
-| `cmd/firmary-helper`        | The Helper                                                   |
-| `cmd/fake-relay`            | A local fake relay for development (loopback only)           |
-| `internal/devicekey`        | Device key                                                   |
-| `internal/fsperm`           | Data directory and key ownership checks                      |
-| `internal/pairing`          | Pairing record and code-match derivation                     |
-| `internal/protocol`         | Relay messages, stream events, prompt hash                   |
-| `internal/ticket`           | Turn ticket verification (EdDSA JWT, single use)             |
-| `internal/relay`            | Relay client: auth, pairing, hello, reconnect                |
-| `internal/driver/claudecode`| Claude Code driver: Ensure, Status, Run, environment scrub   |
-| `internal/helper`           | Turn policy: ticket and account checks, then the driver      |
-| `internal/logx`             | The metadata-only local log                                  |
-| `internal/fakerelay`        | Fake relay used by tests and `cmd/fake-relay`                |
+| Path                         | What                                                         |
+| ---------------------------- | ------------------------------------------------------------ |
+| `cmd/firmary-helper`         | The Helper                                                   |
+| `cmd/fake-relay`             | A local fake relay for development (loopback only)           |
+| `internal/brand`             | The product name (one constant)                              |
+| `internal/console`           | What the Helper prints to the person, in the design's words  |
+| `internal/devicekey`         | Device key                                                   |
+| `internal/fsperm`            | Data directory and key ownership checks                      |
+| `internal/pairing`           | Pairing record and code-match derivation                     |
+| `internal/protocol`          | Relay messages, stream events, prompt hash                   |
+| `internal/ticket`            | Turn ticket verification (EdDSA JWT, single use)             |
+| `internal/relay`             | Relay client: auth, pairing, hello, reconnect                |
+| `internal/driver/claudecode` | Claude Code driver: Ensure, Status, Run, environment scrub   |
+| `internal/helper`            | Turn policy: ticket and account checks, then the driver      |
+| `internal/logx`              | The metadata-only local log                                  |
+| `internal/fakerelay`         | Fake relay used by tests and `cmd/fake-relay`                |
+
+Protocol context strings such as `firmary-helper-auth-v1` are part of the wire contract with Firmary's relay
+(see `SCHEMA-CHANGES.md`), so they don't follow the product name.
 
 ## Develop
+
+Go version: see `go.mod`.
 
 ```sh
 go test ./...
 go run ./cmd/fake-relay            # prints a ws:// URL and a ticket-key file
 go run ./cmd/firmary-helper run --env local --relay-url ws://127.0.0.1:PORT/ --ticket-key-file PATH --data-dir ~/.firmary-helper-dev
 ```
+
+The first `run` downloads the pinned Claude Code (about 290 MB). The real-Claude-Code tests are opt-in: set
+`FIRMARY_HELPER_REAL_CLAUDE` to an install directory.
+
+CI (`.github/workflows/ci.yml`) runs gofmt, vet, the race tests, and builds for macOS, Windows and Linux on
+GitHub-hosted runners.
 
 ## Licence
 
