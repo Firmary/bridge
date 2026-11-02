@@ -103,7 +103,7 @@ const (
 )
 
 // TestRealNothingActsOnComputer also proves Firmary's system prompt replaces Codex's: the first message of every
-// request is exactly prompt.System, Codex's built-in instructions appear nowhere, and no instruction file is read
+// request is exactly prompt.Default, Codex's built-in instructions appear nowhere, and no instruction file is read
 // (AGENTS.md and AGENTS.override.md in HOME, AGENTS.md in the profile's CODEX_HOME and in its working directory).
 //
 // TestRealNothingActsOnComputer runs the real pinned Codex (same opt-in as TestRealPinnedCodex) against a local
@@ -257,7 +257,7 @@ func TestRealNothingActsOnComputer(t *testing.T) {
 	}
 	for _, m := range firstMessages {
 		// Codex trims the file's trailing newline.
-		if m != strings.TrimSpace(prompt.System) {
+		if m != strings.TrimSpace(prompt.Default) {
 			t.Errorf("first message is not Firmary's system prompt: %q", m)
 		}
 	}

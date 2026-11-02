@@ -3,6 +3,8 @@ package driver
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 
 	"github.com/Firmary/bridge/internal/protocol"
 )
@@ -82,4 +84,25 @@ type SignInDriver interface {
 	Driver
 	SignIn(ctx context.Context, p Profile, kind string, step func(SignInStep)) error
 	SignOut(ctx context.Context, p Profile) error
+}
+
+// WriteFileAtomic replaces path with b, mode 0600, through a temporary file in the same directory, so a reader
+// never sees a partial file and a link planted at path is replaced rather than followed.
+func WriteFileAtomic(path string, b []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }

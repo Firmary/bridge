@@ -98,7 +98,7 @@ The logger has no free-text field, and tests enforce this.
 | `internal/ticket`            | Turn ticket verification (EdDSA JWT, single use)             |
 | `internal/relay`             | Relay client: auth, pairing, hello, reconnect                |
 | `internal/driver/claudecode` | Claude Code driver: Ensure, Status, Run, environment scrub   |
-| `internal/driver/prompt`     | Firmary's system prompt for both provider apps (`firmary-system-prompt.md`) |
+| `internal/driver/prompt`     | Firmary's default system prompt for both provider apps (`firmary-system-prompt.md`, placeholder wording) |
 | `internal/driver/codex`      | Codex driver: Ensure, Status, SignIn/SignOut, Run, environment scrub |
 | `internal/helper`            | Turn policy: ticket and account checks, then the driver      |
 | `internal/logx`              | The metadata-only local log                                  |
