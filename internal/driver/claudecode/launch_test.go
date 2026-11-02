@@ -190,3 +190,16 @@ func TestFallbackPromptFollowsTools(t *testing.T) {
 		}
 	}
 }
+
+// TestCodexKnobsIgnored pins that the Codex knob block has no effect on Claude Code (review F9; SCHEMA-CHANGES.md §8).
+func TestCodexKnobsIgnored(t *testing.T) {
+	prof := driver.Profile{UserID: "u1", Dir: "/profile"}
+	a, _ := launch.Parse(`{"schema":1,"effort":"max"}`)
+	b, err := launch.Parse(`{"schema":1,"effort":"max","codex":{"reasoningSummary":"detailed","verbosity":"high","replaceBuiltinInstructions":false}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x, y := runArgs(prof, "m", a), runArgs(prof, "m", b); !slices.Equal(x, y) {
+		t.Errorf("Codex knobs changed Claude Code's flags: %q vs %q", x, y)
+	}
+}

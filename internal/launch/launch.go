@@ -99,6 +99,11 @@ type Codex struct {
 func (p Profile) HasTool(name string) bool { return slices.Contains(p.Tools, name) }
 
 // Capabilities is what this build declares in hello: the server never sends a profile field, tool or knob outside it.
+// It lists what this build parses, for both drivers. Three mappings are lossy, and the server's preview must say so
+// (SCHEMA-CHANGES.md §8; the driver tests pin them):
+//   - Codex has no effort above xhigh, so effort "max" runs as "xhigh";
+//   - Codex has no turn limit, so maxTurns is ignored there and only the turn timeout bounds a Codex turn with a tool;
+//   - each driver ignores the other provider's knob block (claudeCode or codex).
 func Capabilities() *protocol.LaunchCapabilities {
 	return &protocol.LaunchCapabilities{
 		ProfileSchemas: []int{Schema},
