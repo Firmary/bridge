@@ -19,14 +19,23 @@ Status: **first slice, not released, not signed, not for use yet.**
   plan's Helper repo ("H").
 - History: the S2 skeleton was built and security-reviewed in a local `firmary-helper` repo
   (`reviews/firmary-helper-s2-security-review-2026-11-01.md`); its commits are kept here as they were.
+- Provenance: all the Go code is new, written for this project (first in that local repo, from 2026-11-01). Nothing
+  is copied from another project. The only copied files are data: the relay test vectors and fixtures in
+  `internal/protocol/testdata` (from Firmary's own `firmary-os`, `packages/validators/ai-relay/helper/fixtures`),
+  Anthropic's public release-signing key `internal/driver/claudecode/anthropic-release-key.asc` and the checksums
+  in `pin.go` (from Anthropic's signed release manifest). Go dependencies are BSD-licensed (`gorilla/websocket`
+  BSD-2-Clause; `ProtonMail/go-crypto`, `cloudflare/circl`, `golang.org/x/crypto`, `golang.org/x/sys`
+  BSD-3-Clause), which Apache-2.0 allows.
 
 ## What works in this slice
 
 - **Device key.** An Ed25519 key, created on first run in a `0600` file under the data directory. No Firmary secret
   is ever stored on disk.
 - **Pairing by code match.** The Helper commits to a random value, the relay sends its own, the Helper reveals its
-  value, and both sides derive the same `ABCD-EFGH` code. The person confirms it in Firmary, then the Helper prints
-  which firm it paired to.
+  value, and both sides derive the same `ABCD-EFGH` code. Firmary shows that code beside the computer that asked;
+  the person pairs there only if it matches the Helper's. Nobody types or pastes the code, and no code is ever on a
+  command line. It is new on every connection. The Helper prints it only to a terminal, never to a service log,
+  then prints the person and firm it paired to.
 - **One outgoing connection.** A `wss://` WebSocket to the relay with reconnect and backoff, plus `hello`. Nothing
   listens on the computer and no ports are opened.
 - **Its own pinned Claude Code.** The Helper installs its own copy from Anthropic's release bucket and checks it
@@ -35,10 +44,11 @@ Status: **first slice, not released, not signed, not for use yet.**
   touched.
 - **Turns.** A turn runs only with a ticket signed by Firmary's pinned key that is for this device and its paired
   user, unexpired, unused and matches the prompt.
-- **The design's terminal copy.** The Helper prints the "Always-on server" transcript: name, version and computer,
-  `ok  Reached Firmary (outgoing only, nothing to open)`, `Confirm this code in Firmary:`, and
-  `ok  Paired to <firm>`.
-  The code is in [`internal/console`](internal/console), and tests pin it to the design.
+- **The terminal screen.** The Helper prints the design's "Always-on server" transcript, changed to the secure
+  pairing flow: name, version and computer, `ok  Reached Firmary (outgoing only, nothing to open)`, the code it
+  derived with "Check that Firmary shows the same code, then pair there", a "the code changed" note after a
+  reconnect, and `ok  Paired to <person> · <firm>`. The code is in [`internal/console`](internal/console); its
+  package comment lists where and why it differs from the design, and tests pin the copy.
 
 ## What is stubbed or not built yet
 
@@ -59,7 +69,7 @@ Local logs (`logs/helper.log`, 5 x 1 MB, rotating) carry metadata only: timestam
 provider, model, duration, token counts, limit windows, error class and pattern name, versions.
 
 Never logged: prompts, context, outputs, file contents, tokens and credentials, sign-in URLs and codes, the
-pairing code, the firm name, environment variables, raw provider error text, and the stdout or stderr of `claude`.
+pairing code, the person's and firm's names, environment variables, raw provider error text, and the stdout or stderr of `claude`.
 The logger has no free-text field, and tests enforce this.
 
 ## Layout
