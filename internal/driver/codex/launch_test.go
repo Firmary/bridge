@@ -322,3 +322,28 @@ func TestStatusDuringTurnKeepsTurnFiles(t *testing.T) {
 		t.Error("an idle status left the last turn's prompt in config.toml")
 	}
 }
+
+// TestLossyMappings pins what hello.launch can't say and SCHEMA-CHANGES.md §8 documents (review F9): effort max runs
+// as xhigh, maxTurns has no effect, and the Claude Code knobs are ignored. Change those docs if this test changes.
+func TestLossyMappings(t *testing.T) {
+	d := &Driver{}
+	prof := driver.Profile{UserID: "u1", Dir: "/profile"}
+	settings := func(doc string) []string {
+		l, err := launch.Parse(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args, fileOnly := d.launchSettings(prof, l)
+		return append(args, fileOnly...)
+	}
+	if a, b := settings(`{"schema":1,"effort":"max"}`), settings(`{"schema":1,"effort":"xhigh"}`); !slices.Equal(a, b) {
+		t.Errorf("effort max %q differs from xhigh %q", a, b)
+	}
+	base := settings(`{"schema":1,"tools":["web_search"]}`)
+	for _, doc := range []string{`{"schema":1,"tools":["web_search"],"maxTurns":1}`,
+		`{"schema":1,"tools":["web_search"],"claudeCode":{"replaceBuiltinInstructions":false}}`} {
+		if got := settings(doc); !slices.Equal(got, base) {
+			t.Errorf("%s changed the Codex settings: %q", doc, got)
+		}
+	}
+}
