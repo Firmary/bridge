@@ -162,6 +162,13 @@ func TestRealLaunchProfile(t *testing.T) {
 		}
 	}
 
+	// Web search on without a prompt: the built-in prompt that says it can search (review F8).
+	for _, r := range run(`{"schema":1,"tools":["web_search"]}`) {
+		if base(r) != strings.TrimSpace(prompt.DefaultWebSearch) {
+			t.Errorf("web search without a prompt: instructions %.80q", base(r))
+		}
+	}
+
 	// Web search on, the knobs, the profile's own prompt.
 	custom := "You are a test assistant. " + testkit.SystemPromptCanary
 	for _, r := range run(`{"schema":1,"systemPrompt":"` + custom + `","effort":"max","tools":["web_search"],` +

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/launch"
 	"github.com/Firmary/bridge/internal/protocol"
 	"github.com/Firmary/bridge/internal/testkit"
@@ -168,5 +169,24 @@ func TestRunWithLaunchProfile(t *testing.T) {
 	}
 	if fi, err := os.Stat(systemPromptFile(prof)); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Errorf("prompt file mode: %v %v", fi, err)
+	}
+}
+
+// TestFallbackPromptFollowsTools: a profile without systemPrompt gets the built-in prompt that matches its tools, and
+// a profile's own prompt always wins (review F8).
+func TestFallbackPromptFollowsTools(t *testing.T) {
+	for doc, want := range map[string]string{
+		`{"schema":1}`:                                              prompt.Default,
+		`{"schema":1,"tools":[]}`:                                   prompt.Default,
+		`{"schema":1,"tools":["web_search"]}`:                       prompt.DefaultWebSearch,
+		`{"schema":1,"systemPrompt":"Own.","tools":["web_search"]}`: "Own.",
+	} {
+		l, err := launch.Parse(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := systemPromptText(l); got != want {
+			t.Errorf("%s: prompt %.60q", doc, got)
+		}
 	}
 }
