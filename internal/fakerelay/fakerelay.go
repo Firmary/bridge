@@ -20,11 +20,11 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/Firmary/firmary-helper/internal/devicekey"
-	"github.com/Firmary/firmary-helper/internal/pairing"
-	"github.com/Firmary/firmary-helper/internal/protocol"
-	"github.com/Firmary/firmary-helper/internal/testkit"
-	"github.com/Firmary/firmary-helper/internal/ticket"
+	"github.com/Firmary/bridge/internal/devicekey"
+	"github.com/Firmary/bridge/internal/pairing"
+	"github.com/Firmary/bridge/internal/protocol"
+	"github.com/Firmary/bridge/internal/testkit"
+	"github.com/Firmary/bridge/internal/ticket"
 )
 
 // Device is a paired device as the relay knows it.

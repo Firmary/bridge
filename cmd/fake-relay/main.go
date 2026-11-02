@@ -12,9 +12,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Firmary/firmary-helper/internal/driver/claudecode"
-	"github.com/Firmary/firmary-helper/internal/fakerelay"
-	"github.com/Firmary/firmary-helper/internal/protocol"
+	"github.com/Firmary/bridge/internal/driver/claudecode"
+	"github.com/Firmary/bridge/internal/fakerelay"
+	"github.com/Firmary/bridge/internal/protocol"
 )
 
 func main() {

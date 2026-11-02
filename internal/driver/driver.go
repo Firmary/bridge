@@ -4,7 +4,7 @@ package driver
 import (
 	"context"
 
-	"github.com/Firmary/firmary-helper/internal/protocol"
+	"github.com/Firmary/bridge/internal/protocol"
 )
 
 // Pin is the exact provider app version Firmary's signed manifest names, with the SHA-256 of the binary per

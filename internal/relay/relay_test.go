@@ -18,8 +18,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/Firmary/firmary-helper/internal/pairing"
-	"github.com/Firmary/firmary-helper/internal/protocol"
+	"github.com/Firmary/bridge/internal/pairing"
+	"github.com/Firmary/bridge/internal/protocol"
 )
 
 var b64 = base64.RawURLEncoding
@@ -48,6 +48,7 @@ func runHelper(t *testing.T, url string, shown chan<- string) {
 	dir := t.TempDir()
 	c, err := New(Config{URL: url, Env: "local", KeyPath: filepath.Join(dir, "device.key"),
 		PairingPath: filepath.Join(dir, "pairing.json"), HelperVersion: "0.0.0-test",
+		ShowConnected:   func() { shown <- "reached" },
 		ShowPairingCode: func(code string) { shown <- code }, MinBackoff: time.Hour})
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +109,10 @@ func TestPairingCommitThenReveal(t *testing.T) {
 	if len(res.helperNonce) != pairing.NonceSize || !bytes.Equal(pairing.Commit(ed25519.PublicKey(res.pub), res.helperNonce), res.commit) {
 		t.Fatal("the revealed nonce does not match the commitment sent before the relay nonce")
 	}
+	// The person first sees that Firmary was reached, then the code (design: "Always-on server", step 2).
+	if first := <-shown; first != "reached" {
+		t.Fatalf("first message shown was %q, want the reached line before the code", first)
+	}
 	if code := <-shown; code != pairing.Code(res.pub, res.relayNonce, res.helperNonce) {
 		t.Fatalf("shown code %s is not the code over pub, Nr and Nh", code)
 	}
@@ -132,6 +137,9 @@ func TestPairingRefusesBadRelayNonce(t *testing.T) {
 	runHelper(t, url, shown)
 	if <-revealed {
 		t.Fatal("the Helper revealed its nonce for a short relay nonce")
+	}
+	if first := <-shown; first != "reached" {
+		t.Fatalf("first message shown was %q, want the reached line", first)
 	}
 	select {
 	case <-shown:
