@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -25,14 +26,23 @@ var ModelRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._:\[\]-]{0,99}$`)
 // MaxOutputTokensCap bounds the ticket's maxOutputTokens.
 const MaxOutputTokensCap = 128000
 
-// runArgs: print mode with streamed JSON, and nothing that could act on this computer. No tools, no MCP servers,
-// no settings files (user, project or local), no slash commands or skills, nothing saved to resume.
+// runArgs: print mode with streamed JSON, Firmary's system prompt, and nothing that could act on this computer. No
+// tools, no MCP servers, no settings files (user, project or local), no slash commands or skills, nothing saved to
+// resume.
 func runArgs(model string) []string {
-	return []string{
+	args := []string{
 		"-p", "--input-format", "text", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 		"--tools", "", "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands",
 		"--no-session-persistence", "--permission-mode", "default", "--model", model,
 	}
+	return append(args, systemPromptArgs()...)
+}
+
+// systemPromptArgs is the one place the Claude Code driver passes Firmary's system prompt. --system-prompt replaces
+// Claude Code's built-in prompt. The prompt is Firmary's fixed text, never user input, so it may go on the command
+// line.
+func systemPromptArgs() []string {
+	return []string{"--system-prompt", prompt.System}
 }
 
 // input is the text written to Claude Code's stdin. The prompt never goes on the command line, where other local

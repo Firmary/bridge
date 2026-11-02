@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/protocol"
 	"github.com/Firmary/bridge/internal/testkit"
 )
@@ -202,7 +203,19 @@ func TestEnvironmentScrub(t *testing.T) {
 			t.Errorf("missing %q in args:\n%s", want, args)
 		}
 	}
+	// Firmary's system prompt replaces Codex's built-in instructions: the profile's copy of it, named on the command
+	// line and in config.toml.
+	instr := filepath.Join(prof.Dir, "home", "firmary-system-prompt.md")
+	if b, _ := os.ReadFile(instr); string(b) != prompt.System {
+		t.Errorf("instructions file %q", b)
+	}
+	if !strings.Contains(string(args), `[model_instructions_file="`+instr+`"]`) {
+		t.Errorf("model_instructions_file missing in args:\n%s", args)
+	}
 	cfg, _ := os.ReadFile(filepath.Join(prof.Dir, "home", "config.toml"))
+	if !strings.Contains(string(cfg), `model_instructions_file = "`+instr+`"`+"\n") {
+		t.Errorf("model_instructions_file missing in config.toml:\n%s", cfg)
+	}
 	if !strings.Contains(string(cfg), "check_for_update_on_startup = false\n") || !strings.Contains(string(cfg), `cli_auth_credentials_store = "file"`) {
 		t.Errorf("config.toml:\n%s", cfg)
 	}
@@ -291,7 +304,8 @@ func TestStatusNeedsChatGPTLogin(t *testing.T) {
 	}
 }
 
-// TestPrepareRemovesGlobalInstructions: AGENTS.md in CODEX_HOME would be sent with every turn.
+// TestPrepareRemovesGlobalInstructions: AGENTS.md in CODEX_HOME would be sent with every turn, and a changed copy of
+// Firmary's system prompt is put back.
 func TestPrepareRemovesGlobalInstructions(t *testing.T) {
 	d, _ := New(t.TempDir())
 	prof := driver.Profile{UserID: "u1", Dir: t.TempDir()}
@@ -300,6 +314,7 @@ func TestPrepareRemovesGlobalInstructions(t *testing.T) {
 		os.WriteFile(filepath.Join(codexHome(prof), n), []byte("x"), 0o600)
 	}
 	os.WriteFile(filepath.Join(codexHome(prof), "config.toml"), []byte("[mcp_servers.x]\ncommand = \"/bin/sh\"\n"), 0o600)
+	os.WriteFile(instructionsFile(prof), []byte("changed"), 0o600)
 	if err := d.prepare(prof); err != nil {
 		t.Fatal(err)
 	}
@@ -310,6 +325,9 @@ func TestPrepareRemovesGlobalInstructions(t *testing.T) {
 	}
 	if cfg, _ := os.ReadFile(filepath.Join(codexHome(prof), "config.toml")); strings.Contains(string(cfg), "mcp_servers") {
 		t.Error("config.toml not replaced")
+	}
+	if b, _ := os.ReadFile(instructionsFile(prof)); string(b) != prompt.System {
+		t.Error("system prompt file not replaced")
 	}
 }
 

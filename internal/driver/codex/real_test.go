@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/protocol"
 	"github.com/Firmary/bridge/internal/testkit"
 )
@@ -91,12 +92,20 @@ func realProfileDir(t *testing.T) string {
 
 // Canaries for TestRealNothingActsOnComputer. Synthetic values only.
 const (
-	agentsCanary     = "AGENTS_MD_CANARY_52"
+	agentsCanary    = "AGENTS_MD_CANARY_52"
+	codexHomeCanary = "CODEX_HOME_AGENTS_CANARY_07"
+	workDirCanary   = "WORK_DIR_AGENTS_CANARY_33"
+	// builtInPrompt is the start of Codex 0.166.0's own instructions for gpt-5.5.
+	builtInPrompt    = "You are Codex"
 	skillCanary      = "SKILL_CANARY_18"
 	gitCommitCanary  = "GIT_COMMIT_CANARY_64"
 	projectMCPMarker = "MCP_RAN_CANARY"
 )
 
+// TestRealNothingActsOnComputer also proves Firmary's system prompt replaces Codex's: the first message of every
+// request is exactly prompt.System, Codex's built-in instructions appear nowhere, and no instruction file is read
+// (AGENTS.md and AGENTS.override.md in HOME, AGENTS.md in the profile's CODEX_HOME and in its working directory).
+//
 // TestRealNothingActsOnComputer runs the real pinned Codex (same opt-in as TestRealPinnedCodex) against a local
 // stub of OpenAI's Responses API that records every request, with a dummy key: no account, no traffic to OpenAI.
 // HOME is a git repository holding an AGENTS.md, a user skill and a .codex/config.toml with an MCP server, as a
@@ -124,6 +133,7 @@ func TestRealNothingActsOnComputer(t *testing.T) {
 	}
 	mcpRan := filepath.Join(home, projectMCPMarker)
 	mustWrite("AGENTS.md", agentsCanary+"\n")
+	mustWrite("AGENTS.override.md", agentsCanary+"\n")
 	mustWrite(".agents/skills/canary/SKILL.md", "---\nname: canary\ndescription: "+skillCanary+"\n---\n"+skillCanary+"\n")
 	mustWrite(".codex/config.toml", fmt.Sprintf("[mcp_servers.canary]\ncommand = \"/bin/sh\"\nargs = [\"-c\", \"touch %s\"]\n", mcpRan))
 	git := exec.Command("sh", "-c", "git init -q && git -c user.email=t@example.invalid -c user.name=t commit -q --allow-empty -m "+gitCommitCanary)
@@ -134,10 +144,16 @@ func TestRealNothingActsOnComputer(t *testing.T) {
 	}
 	prof := driver.Profile{UserID: "u1", Dir: filepath.Join(home, ".local", "share", "firmary-helper", "prod", "profiles", "u1", "codex")}
 	writeTargets := []string{filepath.Join(home, "PWNED_HOME"), "PWNED_WORK"}
+	for path, body := range map[string]string{filepath.Join(prof.Dir, "home", "AGENTS.md"): codexHomeCanary,
+		filepath.Join(prof.Dir, "work", "AGENTS.md"): workDirCanary} {
+		os.MkdirAll(filepath.Dir(path), 0o700)
+		os.WriteFile(path, []byte(body+"\n"), 0o600)
+	}
 
 	var mu sync.Mutex
 	var bodies []string
 	var tools [][]string
+	var firstMessages []string
 	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		mu.Lock()
@@ -148,12 +164,26 @@ func TestRealNothingActsOnComputer(t *testing.T) {
 			return
 		}
 		var req struct {
-			Tools []struct {
+			Instructions string `json:"instructions"`
+			Tools        []struct {
 				Name string `json:"name"`
 				Type string `json:"type"`
 			} `json:"tools"`
+			Input []struct {
+				Role    string `json:"role"`
+				Content []struct {
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"input"`
 		}
 		json.Unmarshal(b, &req)
+		first := req.Instructions
+		if first == "" && len(req.Input) > 0 && req.Input[0].Role == "developer" && len(req.Input[0].Content) == 1 {
+			first = req.Input[0].Content[0].Text
+		}
+		mu.Lock()
+		firstMessages = append(firstMessages, first)
+		mu.Unlock()
 		var names []string
 		for _, tl := range req.Tools {
 			names = append(names, tl.Name+tl.Type)
@@ -225,7 +255,14 @@ func TestRealNothingActsOnComputer(t *testing.T) {
 	if !strings.Contains(all, "writing is blocked by read-only sandbox") {
 		t.Error("apply_patch was not rejected by the sandbox")
 	}
-	for _, c := range []string{agentsCanary, skillCanary, gitCommitCanary, "<environment_context>", "<skills_instructions>"} {
+	for _, m := range firstMessages {
+		// Codex trims the file's trailing newline.
+		if m != strings.TrimSpace(prompt.System) {
+			t.Errorf("first message is not Firmary's system prompt: %q", m)
+		}
+	}
+	for _, c := range []string{builtInPrompt, agentsCanary, codexHomeCanary, workDirCanary, skillCanary, gitCommitCanary,
+		"<environment_context>", "<skills_instructions>", "AGENTS.md instructions"} {
 		if strings.Contains(all, c) {
 			t.Errorf("%q from this computer reached the API", c)
 		}

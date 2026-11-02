@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -133,9 +134,20 @@ func (d *Driver) Installed() (version, path string) {
 func codexHome(p driver.Profile) string { return filepath.Join(p.Dir, "home") }
 func workDir(p driver.Profile) string   { return filepath.Join(p.Dir, "work") }
 
-// prepare creates the profile and rewrites its config.toml with the Helper's settings, so a change made by Codex or
-// anyone else doesn't survive to the next run. Global instruction files in CODEX_HOME are removed: Codex sends them
-// with every turn.
+// instructionsFile is where the profile's copy of Firmary's system prompt is written for model_instructions_file.
+func instructionsFile(p driver.Profile) string {
+	return filepath.Join(codexHome(p), "firmary-system-prompt.md")
+}
+
+// profileSettings are the settings that depend on the profile: Firmary's system prompt in place of Codex's built-in
+// instructions. This is the one place the Codex driver passes Firmary's prompt.
+func (d *Driver) profileSettings(p driver.Profile) []string {
+	return append([]string{`model_instructions_file=` + tomlString(instructionsFile(p))}, d.extraConfig...)
+}
+
+// prepare creates the profile and rewrites its config.toml and Firmary's system prompt file, so a change made by
+// Codex or anyone else doesn't survive to the next run. Global instruction files in CODEX_HOME are removed: Codex
+// sends them with every turn.
 func (d *Driver) prepare(p driver.Profile) error {
 	for _, dir := range []string{p.Dir, codexHome(p), workDir(p)} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -147,7 +159,10 @@ func (d *Driver) prepare(p driver.Profile) error {
 			return err
 		}
 	}
-	return writeFileAtomic(filepath.Join(codexHome(p), "config.toml"), []byte(configTOML(d.extraConfig)))
+	if err := writeFileAtomic(instructionsFile(p), []byte(prompt.System)); err != nil {
+		return err
+	}
+	return writeFileAtomic(filepath.Join(codexHome(p), "config.toml"), []byte(configTOML(d.profileSettings(p))))
 }
 
 func writeFileAtomic(path string, b []byte) error {
@@ -181,8 +196,8 @@ func (d *Driver) command(ctx context.Context, bin string, p driver.Profile, args
 }
 
 // withConfig puts the -c flags for the Helper's settings after a subcommand.
-func (d *Driver) withConfig(sub ...string) []string {
-	return append(sub, configArgs(d.extraConfig)...)
+func (d *Driver) withConfig(p driver.Profile, sub ...string) []string {
+	return append(sub, configArgs(d.profileSettings(p))...)
 }
 
 // authFile is the subset of CODEX_HOME/auth.json the Helper reads. Tokens are never kept: only the id_token's
@@ -256,7 +271,7 @@ func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderS
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := d.command(ctx, bin, p, d.withConfig("login", "status")...)
+	cmd := d.command(ctx, bin, p, d.withConfig(p, "login", "status")...)
 	var out bytes.Buffer
 	w := &limitedWriter{w: &out, n: 64 << 10}
 	cmd.Stdout, cmd.Stderr = w, w
@@ -361,7 +376,7 @@ func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, step
 	}
 	ctx, cancel := context.WithTimeout(ctx, SignInTimeout)
 	defer cancel()
-	cmd := d.command(ctx, bin, p, d.withConfig(args...)...)
+	cmd := d.command(ctx, bin, p, d.withConfig(p, args...)...)
 	sc := &signInScanner{kind: kind, step: step}
 	cmd.Stdout, cmd.Stderr = sc, sc
 	runErr := cmd.Run()
@@ -393,7 +408,7 @@ func (d *Driver) SignOut(ctx context.Context, p driver.Profile) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := d.command(ctx, bin, p, d.withConfig("logout")...)
+	cmd := d.command(ctx, bin, p, d.withConfig(p, "logout")...)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if err := cmd.Run(); err != nil {
 		return errors.New("logout failed")
