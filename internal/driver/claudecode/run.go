@@ -78,12 +78,13 @@ func systemPromptFile(p driver.Profile) string {
 	return filepath.Join(p.Dir, "firmary-system-prompt.md")
 }
 
-// systemPromptText is the turn's system prompt: the launch profile's, else Firmary's built-in default.
+// systemPromptText is the turn's system prompt: the launch profile's, else Firmary's built-in default for the
+// profile's tools.
 func systemPromptText(l launch.Profile) string {
 	if l.SystemPrompt != "" {
 		return l.SystemPrompt
 	}
-	return prompt.Default
+	return prompt.Fallback(l.HasTool(launch.ToolWebSearch))
 }
 
 // writeSystemPrompt writes the turn's resolved system prompt to the profile (0600, rewritten every turn). It goes

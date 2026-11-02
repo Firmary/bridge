@@ -178,12 +178,13 @@ func (d *Driver) launchSettings(p driver.Profile, l launch.Profile) (args, fileO
 	return append(args, d.extraConfig...), fileOnly
 }
 
-// systemPromptText is the turn's system prompt: the launch profile's, else Firmary's built-in default.
+// systemPromptText is the turn's system prompt: the launch profile's, else Firmary's built-in default for the
+// profile's tools.
 func systemPromptText(l launch.Profile) string {
 	if l.SystemPrompt != "" {
 		return l.SystemPrompt
 	}
-	return prompt.Default
+	return prompt.Fallback(l.HasTool(launch.ToolWebSearch))
 }
 
 // prepare creates the profile and rewrites its config.toml and Firmary's system prompt file for the launch profile,

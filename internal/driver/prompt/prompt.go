@@ -12,3 +12,17 @@ import _ "embed"
 //
 //go:embed firmary-system-prompt.md
 var Default string
+
+// DefaultWebSearch is Default with the required block's tool sentence made true for a turn whose profile turns web
+// search on (firmary-system-prompt-web-search.md). Default says there are no tools, which would be false there.
+//
+//go:embed firmary-system-prompt-web-search.md
+var DefaultWebSearch string
+
+// Fallback is the built-in prompt for a turn whose launch profile has no systemPrompt.
+func Fallback(webSearch bool) string {
+	if webSearch {
+		return DefaultWebSearch
+	}
+	return Default
+}
