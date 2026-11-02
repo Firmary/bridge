@@ -204,3 +204,29 @@ func TestWebSearchItems(t *testing.T) {
 		t.Fatal("a command ran with web search on")
 	}
 }
+
+// TestTOMLStringEscapesControls: no character TOML forbids in a basic string (C0 controls other than tab, and DEL)
+// is left raw, and a quote can't end the string early.
+func TestTOMLStringEscapesControls(t *testing.T) {
+	var all strings.Builder
+	for r := rune(0); r < 0x80; r++ {
+		all.WriteRune(r)
+	}
+	all.WriteString("  \"\"\" '''")
+	q := tomlString(all.String())
+	body := q[1 : len(q)-1]
+	for i := 0; i < len(body); i++ {
+		if c := body[i]; (c < 0x20 && c != '\t') || c == 0x7f {
+			t.Fatalf("raw control character %#x in %q", c, q)
+		}
+		if body[i] == '"' && (i == 0 || body[i-1] != '\\') {
+			t.Fatalf("unescaped quote in %q", q)
+		}
+	}
+	if !strings.Contains(q, `\u007f`) || !strings.HasPrefix(q, `"`) || !strings.HasSuffix(q, `"`) {
+		t.Fatalf("tomlString: %q", q)
+	}
+	if got := configTOML([]string{`developer_instructions=` + tomlString("a\x7fb")}); !strings.Contains(got, `developer_instructions = "a\u007fb"`+"\n") {
+		t.Fatalf("config.toml:\n%s", got)
+	}
+}
