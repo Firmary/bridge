@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestSystemPromptIsEmbedded(t *testing.T) {
-	if !strings.HasPrefix(System, "You are the AI assistant inside Firmary") || strings.Contains(System, "\r") {
-		t.Fatalf("unexpected system prompt: %q", System)
+func TestDefaultPromptIsEmbedded(t *testing.T) {
+	if !strings.HasPrefix(Default, "You are the AI assistant inside Firmary") || strings.Contains(Default, "\r") {
+		t.Fatalf("unexpected system prompt: %q", Default)
 	}
 }

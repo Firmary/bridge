@@ -206,7 +206,7 @@ func TestEnvironmentScrub(t *testing.T) {
 	// Firmary's system prompt replaces Codex's built-in instructions: the profile's copy of it, named on the command
 	// line and in config.toml.
 	instr := filepath.Join(prof.Dir, "home", "firmary-system-prompt.md")
-	if b, _ := os.ReadFile(instr); string(b) != prompt.System {
+	if b, _ := os.ReadFile(instr); string(b) != prompt.Default {
 		t.Errorf("instructions file %q", b)
 	}
 	if !strings.Contains(string(args), `[model_instructions_file="`+instr+`"]`) {
@@ -326,7 +326,7 @@ func TestPrepareRemovesGlobalInstructions(t *testing.T) {
 	if cfg, _ := os.ReadFile(filepath.Join(codexHome(prof), "config.toml")); strings.Contains(string(cfg), "mcp_servers") {
 		t.Error("config.toml not replaced")
 	}
-	if b, _ := os.ReadFile(instructionsFile(prof)); string(b) != prompt.System {
+	if b, _ := os.ReadFile(instructionsFile(prof)); string(b) != prompt.Default {
 		t.Error("system prompt file not replaced")
 	}
 }

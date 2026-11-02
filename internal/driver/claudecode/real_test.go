@@ -178,13 +178,19 @@ func TestRealNoLocalContextReachesAPI(t *testing.T) {
 		var blocks []struct {
 			Text string `json:"text"`
 		}
-		if err := json.Unmarshal([]byte(sys), &blocks); err != nil || len(blocks) == 0 || blocks[len(blocks)-1].Text != prompt.System {
+		if err := json.Unmarshal([]byte(sys), &blocks); err != nil || len(blocks) == 0 || blocks[len(blocks)-1].Text != prompt.Default {
 			t.Errorf("Firmary's system prompt is not the last system block: %s", sys)
 		}
+		total := 0
 		for _, b := range blocks[:max(len(blocks)-1, 0)] {
-			if len(b.Text) > 200 {
+			if total += len(b.Text); len(b.Text) > 200 {
 				t.Errorf("Claude Code added a long system block of its own: %.200q", b.Text)
 			}
+		}
+		// Claude Code's own default prompt is 6-14 KB, depending on the model; its billing and identity lines are
+		// about 140 bytes.
+		if total > 400 {
+			t.Errorf("Claude Code added %d bytes of system text before Firmary's prompt", total)
 		}
 	}
 	if strings.Contains(all, claudeMDCanary) {

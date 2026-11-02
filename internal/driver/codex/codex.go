@@ -159,29 +159,10 @@ func (d *Driver) prepare(p driver.Profile) error {
 			return err
 		}
 	}
-	if err := writeFileAtomic(instructionsFile(p), []byte(prompt.System)); err != nil {
+	if err := driver.WriteFileAtomic(instructionsFile(p), []byte(prompt.Default)); err != nil {
 		return err
 	}
-	return writeFileAtomic(filepath.Join(codexHome(p), "config.toml"), []byte(configTOML(d.profileSettings(p))))
-}
-
-func writeFileAtomic(path string, b []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return driver.WriteFileAtomic(filepath.Join(codexHome(p), "config.toml"), []byte(configTOML(d.profileSettings(p))))
 }
 
 // command builds a Codex invocation in the profile: Helper settings both in config.toml and as -c session flags
