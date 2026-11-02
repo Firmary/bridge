@@ -95,7 +95,9 @@ export const RelayPaired = z.looseObject({
   deviceId: DeviceId,
   userId: UserId,
   firmId: FirmId,
-  /** The firm's display name. The Helper prints "Paired to <firmName>". */
+  /** The person's display name (see §6). The Helper prints "Paired to <userName> · <firmName>". */
+  userName: z.string().min(1).max(200),
+  /** The firm's display name. */
   firmName: z.string().min(1).max(200),
 });
 
@@ -154,13 +156,13 @@ Ordering is what makes the code safe, so the relay must enforce it.
    every connection, so the code changes on reconnect by design: a revealed `Nh` must never be reused.
 5. Confirming is single use. Rate-limit confirmations per account and globally, and never log the code.
 6. On the confirm screen, show what the server knows about the device: OS, approximate location, time.
-7. Send `paired` with `firmName`.
+7. Send `paired` with `userName` and `firmName` (§6).
 8. The Helper's checks, for reference:
    - it refuses a second `pairing_pending` on the same connection;
    - it refuses an `Nr` that is not exactly 32 bytes;
    - it refuses `paired` before it has shown a code;
-   - it refuses a `paired` whose `firmName` is empty or longer than 200 characters after removing control and bidi
-     characters.
+   - it refuses a `paired` whose `userName` or `firmName` is empty or longer than 200 characters after removing
+     control and bidi characters.
 
    A `welcome` naming a pairing the Helper didn't see confirmed still makes it wipe its key and pair again.
 
@@ -232,6 +234,40 @@ handling must know them.
 
 Every rejection uses up the ticket, because `Verify` records the id before the device, prompt and status checks.
 That includes `busy` and `status_failed`. A retry always needs a new ticket.
+
+## 6. The person's name in `paired` (Daniel, #2038)
+
+"Paired to …" names the person as well as the firm, as the design does ("Paired to Maria Okafor · Harlow & Pike
+CPA"). A Helper serves one person's own AI plan (personal AI only for now), so the person is who the device is
+bound to, and the name is what lets them notice a pairing to the wrong account.
+
+- **Schema (`relay-messages.ts`):** add `userName` to `RelayPaired` as in §2: required, 1 to 200 characters, under
+  the same rule as the `firmName` comment on `dev` (send it already sanitized, so the Helper's cleanup doesn't change
+  it). It is the staff user's display name, not their email.
+- **Fixtures:** this repo's copy of `relay-to-helper.fixtures.json` already has it: `userName` in the valid
+  `paired`, and two new invalid cases, "paired without the person's name" and "paired with an empty person's name".
+  Copy the file back to `packages/validators/ai-relay/helper/fixtures/` when the schema changes.
+- **Relay (`apps/worker/src/ai-relay/session.ts`):** the `paired` it sends on `dev` has no `userName`. The Helper
+  refuses that `paired` (`bad_paired`) and pairs again on every connection, so the relay must send the name before
+  it is connected to this Helper.
+- **Never logged:** the Helper shows both names only on a terminal and never writes them to its log or pairing
+  file; the end-to-end never-log test checks this. The relay should not log the name either.
+
+## 7. Pairing screen and where the code is shown (bridge PR #1 review)
+
+These are Helper-side only, with no schema change. They set what Firmary's confirm screen (S3/S11) must match.
+
+- **No code on the install line.** The design's server line (`curl … | sh -s HTRW-KQPN`) carries a code Firmary
+  made. That can't work with §2.1, because the code exists only once the Helper has connected, and a code on a
+  command line would land in shell history and process lists. The one-line install (S10) carries no code.
+- **Compare, don't type.** Firmary shows the pending device (OS, approximate location, time; §2.2 rule 6) and the
+  code it computed. The person checks that it matches the Helper's code and chooses Pair, or "It doesn't match".
+  The code is never typed into Firmary.
+- **New code per connection.** Firmary shows the code for the connection that is waiting now; after a reconnect the
+  Helper prints "The connection restarted, so the code changed".
+- **Terminal only.** The Helper prints the code (and the names in "Paired to") only when stdout is a terminal.
+  Under systemd stdout is journald, which other admins can read, so it prints a hint instead. Showing the code to a
+  headless service (for example a `0600` file plus a `pairing-code` command) is part of S10.
 
 ## Not covered here
 
