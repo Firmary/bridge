@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/Firmary/bridge/internal/brand"
@@ -9,6 +10,9 @@ import (
 // settings are the Helper's Codex settings, as TOML dotted keys and values. Keys are from the pinned release's own
 // config.schema.json (codex-rs/core/config.schema.json at rust-v0.166.0); the pinned binary runs with
 // --strict-config, so a key that a later pin drops fails the turn instead of being silently ignored.
+//
+// Firmary's system prompt replaces Codex's built-in instructions through model_instructions_file, a per-profile
+// setting (see profileSettings).
 //
 // Together they mean nothing in a turn can act on this computer: no shell, no file edits (the one tool Codex always
 // offers, apply_patch, comes from the model catalog and can't be switched off; the read-only sandbox and "never"
@@ -69,6 +73,12 @@ var settings = []string{
 	`features.standalone_web_search=false`,
 	`features.remote_control=false`,
 	`features.sleep_tool=false`,
+}
+
+// tomlString quotes s as a TOML basic string. JSON string escapes are all valid in TOML basic strings.
+func tomlString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 // configTOML renders the settings as config.toml (top-level dotted keys).

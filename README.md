@@ -42,12 +42,13 @@ Status: **first slice, not released, not signed, not for use yet.**
   listens on the computer and no ports are opened.
 - **Its own pinned Claude Code.** The Helper installs its own copy from Anthropic's release bucket and checks it
   against Anthropic's signed manifest *and* a checksum Firmary pins. It runs that copy with the updater off, a
-  separate profile, no tools and a cleaned environment. The person's own Claude Code install and login are never
+  separate profile, no tools, a cleaned environment, and Firmary's system prompt in place of Claude Code's own. The person's own Claude Code install and login are never
   touched.
 - **Its own pinned Codex (driver only).** The Codex driver installs one executable from OpenAI's official GitHub
   release, checked against two checksums Firmary pins (the release archive and the executable in it). Each profile
   has its own `CODEX_HOME` with the update check off. Sign-in is Codex's own ChatGPT sign-in, by browser or by device
-  link. A turn is `codex exec --json` with the prompt on stdin, a cleaned environment, and settings that leave
+  link. A turn is `codex exec --json` with the prompt on stdin, a cleaned environment, Firmary's system prompt in place of
+  Codex's built-in instructions, and settings that leave
   nothing able to act on the computer: no shell, MCP, apps, plugins, hooks, skills, memories, web search, project
   instruction files or saved sessions. The one tool Codex always offers, `apply_patch`, runs in a read-only sandbox
   with approvals off, so every write it tries is refused. The Helper doesn't run it yet (see below).
@@ -97,6 +98,7 @@ The logger has no free-text field, and tests enforce this.
 | `internal/ticket`            | Turn ticket verification (EdDSA JWT, single use)             |
 | `internal/relay`             | Relay client: auth, pairing, hello, reconnect                |
 | `internal/driver/claudecode` | Claude Code driver: Ensure, Status, Run, environment scrub   |
+| `internal/driver/prompt`     | Firmary's system prompt for both provider apps (`firmary-system-prompt.md`) |
 | `internal/driver/codex`      | Codex driver: Ensure, Status, SignIn/SignOut, Run, environment scrub |
 | `internal/helper`            | Turn policy: ticket and account checks, then the driver      |
 | `internal/logx`              | The metadata-only local log                                  |
