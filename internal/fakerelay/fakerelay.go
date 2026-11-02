@@ -28,10 +28,13 @@ import (
 )
 
 // Device is a paired device as the relay knows it.
-type Device struct{ DeviceID, UserID, FirmID, FirmName string }
+type Device struct{ DeviceID, UserID, FirmID, UserName, FirmName string }
 
-// FirmName is the display name the fake relay sends in paired.
-const FirmName = "Synthetic Test Firm"
+// The display names the fake relay sends in paired.
+const (
+	UserName = "Synthetic Test Person"
+	FirmName = "Synthetic Test Firm"
+)
 
 // Relay is a running fake relay.
 type Relay struct {
@@ -202,7 +205,7 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 		r.devices[auth.PublicKey] = dev
 		r.mu.Unlock()
 		if c.WriteJSON(protocol.Paired{Type: protocol.TypePaired, DeviceID: dev.DeviceID, UserID: dev.UserID, FirmID: dev.FirmID,
-			FirmName: dev.FirmName}) != nil {
+			UserName: dev.UserName, FirmName: dev.FirmName}) != nil {
 			return
 		}
 	}
@@ -240,7 +243,7 @@ func (r *Relay) Confirm(code string) bool {
 	delete(r.pending, code)
 	r.mu.Unlock()
 	if ok {
-		ch <- Device{DeviceID: newID(), UserID: newID(), FirmID: newID(), FirmName: FirmName}
+		ch <- Device{DeviceID: newID(), UserID: newID(), FirmID: newID(), UserName: UserName, FirmName: FirmName}
 	}
 	return ok
 }

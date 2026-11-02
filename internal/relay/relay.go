@@ -42,9 +42,9 @@ type Config struct {
 	HelperVersion   string
 	Log             *logx.Logger
 	Handler         TurnHandler
-	ShowConnected   func()                // tells the person the relay was reached; may be nil
-	ShowPairingCode func(code string)     // shows the code to the person; never logged
-	ShowPaired      func(firmName string) // tells the person which firm they paired to; never logged
+	ShowConnected   func()                          // tells the person the relay was reached; may be nil
+	ShowPairingCode func(code string)               // shows the code to the person; never logged
+	ShowPaired      func(userName, firmName string) // tells the person who they paired to; never logged
 	MinBackoff      time.Duration
 	MaxBackoff      time.Duration
 }
@@ -396,8 +396,9 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 			if err != nil {
 				return none, err
 			}
-			firmName, ok := displayName(m.FirmName)
-			if !ok {
+			userName, okUser := displayName(m.UserName)
+			firmName, okFirm := displayName(m.FirmName)
+			if !okUser || !okFirm {
 				return none, sessionError("bad_paired")
 			}
 			rec := pairing.Record{DeviceID: m.DeviceID, UserID: m.UserID, FirmID: m.FirmID, Env: c.cfg.Env}
@@ -406,7 +407,7 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 			}
 			c.cfg.Log.Log(logx.Paired, logx.Fields{DeviceID: rec.DeviceID})
 			if c.cfg.ShowPaired != nil {
-				c.cfg.ShowPaired(firmName)
+				c.cfg.ShowPaired(userName, firmName)
 			}
 			return rec, nil
 		case protocol.TypeError:
@@ -417,7 +418,7 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 	}
 }
 
-// maxDisplayName bounds a firm display name, in characters.
+// maxDisplayName bounds a person's or firm's display name, in characters.
 const maxDisplayName = 200
 
 // displayName makes a relay-supplied name safe to print on a terminal: control characters and bidi overrides are
