@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/driver/prompt"
@@ -248,5 +249,76 @@ func TestFallbackPromptFollowsTools(t *testing.T) {
 		if got := systemPromptText(l); got != want {
 			t.Errorf("%s: prompt %.60q", doc, got)
 		}
+	}
+}
+
+// TestStatusDuringTurnKeepsTurnFiles: a status check (as every incoming turn and hello makes) while a turn is
+// starting doesn't rewrite that turn's prompt or config.toml before Codex reads them, and doesn't wait for the turn
+// to end (review F1). The fake codex reads its files only after a delay, as a real one starting up might.
+func TestStatusDuringTurnKeepsTurnFiles(t *testing.T) {
+	dump := t.TempDir()
+	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+	bin := "#!/bin/sh\n" +
+		`if [ "$1" = "login" ]; then echo 'Logged in using ChatGPT' >&2; exit 0; fi` + "\n" +
+		"cat > /dev/null\ntouch " + q(filepath.Join(dump, "started")) + "\nsleep 1\n" +
+		`cp "$CODEX_HOME/config.toml" ` + q(filepath.Join(dump, "config.toml")) + "\n" +
+		`cp "$CODEX_HOME/firmary-system-prompt.md" ` + q(filepath.Join(dump, "prompt.md")) + "\n" +
+		`printf '%s\n' '{"type":"thread.started","thread_id":"t"}' '{"type":"turn.completed"}'` + "\n"
+	rel := testkit.NewCodexRelease(t, testVersion, testTarget, []byte(bin))
+	d, err := New(t.TempDir(), WithRelease(rel.URL, nil), WithPlatform(testPlatform), WithManagedPaths(),
+		WithEnviron(func() []string { return []string{"PATH=/usr/bin:/bin"} }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Ensure(context.Background(), testPin(rel)); err != nil {
+		t.Fatal(err)
+	}
+	prof := driver.Profile{UserID: "u1", Dir: filepath.Join(t.TempDir(), "u1")}
+
+	for _, profile := range []string{
+		`{"schema":1,"systemPrompt":"` + testkit.SystemPromptCanary + `"}`,
+		`{"schema":1,"systemPrompt":"` + testkit.SystemPromptCanary + `","codex":{"replaceBuiltinInstructions":false}}`,
+	} {
+		os.Remove(filepath.Join(dump, "started"))
+		l, err := launch.Parse(profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		go func() {
+			done <- d.Run(context.Background(), prof, driver.Turn{ID: "t1", Model: "gpt-5.5", Prompt: "hi", MaxOutputTokens: 100,
+				Launch: l}, func(protocol.StreamEvent) {})
+		}()
+		for i := 0; ; i++ {
+			if _, err := os.Stat(filepath.Join(dump, "started")); err == nil {
+				break
+			}
+			if i > 500 {
+				t.Fatal("the fake codex never started")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		start := time.Now()
+		if _, err := d.Status(context.Background(), prof); err != nil {
+			t.Fatal(err)
+		}
+		if waited := time.Since(start); waited > 700*time.Millisecond {
+			t.Errorf("status waited %v for the turn", waited)
+		}
+		if err := <-done; err != nil {
+			t.Fatalf("%s: %v", profile, err)
+		}
+		cfg, _ := os.ReadFile(filepath.Join(dump, "config.toml"))
+		prompt, _ := os.ReadFile(filepath.Join(dump, "prompt.md"))
+		if !strings.Contains(string(cfg)+string(prompt), testkit.SystemPromptCanary) {
+			t.Errorf("%s: the turn's prompt was replaced while Codex started\nconfig.toml:\n%s", profile, cfg)
+		}
+	}
+	// With no turn running, status prepares the profile as before.
+	if _, err := d.Status(context.Background(), prof); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, _ := os.ReadFile(filepath.Join(prof.Dir, "home", "config.toml")); strings.Contains(string(cfg), testkit.SystemPromptCanary) {
+		t.Error("an idle status left the last turn's prompt in config.toml")
 	}
 }

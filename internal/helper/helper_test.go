@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -422,4 +423,51 @@ func TestLaunchProfile(t *testing.T) {
 			t.Errorf("log has no %s rejection", reason)
 		}
 	}
+}
+
+// countingDriver counts Status calls and signals when a turn starts running.
+type countingDriver struct {
+	driver.Driver
+	statuses atomic.Int32
+	running  chan struct{}
+}
+
+func (d *countingDriver) Status(ctx context.Context, p driver.Profile) (driver.ProviderStatus, error) {
+	d.statuses.Add(1)
+	return d.Driver.Status(ctx, p)
+}
+
+func (d *countingDriver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit func(protocol.StreamEvent)) error {
+	d.running <- struct{}{}
+	return d.Driver.Run(ctx, p, t, emit)
+}
+
+// TestBusyTurnNeverAsksProvider: a turn that arrives while another runs is refused as busy before the provider is
+// asked anything, so its status check can't rewrite the running turn's provider profile (review F1).
+func TestBusyTurnNeverAsksProvider(t *testing.T) {
+	var cd *countingDriver
+	g := startRig(t, func(h *helper.Helper) {
+		h.TurnTimeout = 2 * time.Second
+		cd = &countingDriver{Driver: h.Driver, running: make(chan struct{}, 4)}
+		h.Driver = cd
+	})
+	r := g.r
+	c := r.Claims(g.dev, pinVersion, "", testkit.SlowPrompt)
+	if err := r.SendTurn(c, "", testkit.SlowPrompt); err != nil {
+		t.Fatal(err)
+	}
+	recv(t, cd.running, "first turn running")
+	before := cd.statuses.Load()
+
+	c2 := r.Claims(g.dev, pinVersion, "", testkit.PromptCanary)
+	if err := r.SendTurn(c2, "", testkit.PromptCanary); err != nil {
+		t.Fatal(err)
+	}
+	if evs := terminal(t, r, c2.TicketID); len(evs) != 1 || evs[0].Pattern != "busy" {
+		t.Fatalf("second turn: %+v, want busy", evs)
+	}
+	if n := cd.statuses.Load(); n != before {
+		t.Fatalf("the busy turn asked the provider for its status (%d calls)", n-before)
+	}
+	terminal(t, r, c.TicketID) // the slow turn ends at its deadline
 }

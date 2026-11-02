@@ -46,6 +46,26 @@ type Driver struct {
 	mu      sync.Mutex
 	version string
 	binary  string
+
+	// locks holds one mutex per profile directory. A turn holds its profile's from writing its prompt and config
+	// until Codex exits, so nothing rewrites them under it (see prepareIdle).
+	locksMu sync.Mutex
+	locks   map[string]*sync.Mutex
+}
+
+// profileLock returns the mutex of profile p.
+func (d *Driver) profileLock(p driver.Profile) *sync.Mutex {
+	d.locksMu.Lock()
+	defer d.locksMu.Unlock()
+	if d.locks == nil {
+		d.locks = map[string]*sync.Mutex{}
+	}
+	m, ok := d.locks[p.Dir]
+	if !ok {
+		m = &sync.Mutex{}
+		d.locks[p.Dir] = m
+	}
+	return m
 }
 
 // Option configures a Driver. Options exist for tests; production uses the defaults.
@@ -191,10 +211,8 @@ func systemPromptText(l launch.Profile) string {
 // so a change made by Codex or anyone else doesn't survive to the next run. Global instruction files in CODEX_HOME
 // are removed: Codex sends them with every turn.
 func (d *Driver) prepare(p driver.Profile, l launch.Profile) error {
-	for _, dir := range []string{p.Dir, codexHome(p), workDir(p)} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return err
-		}
+	if err := makeDirs(p); err != nil {
+		return err
 	}
 	for _, name := range []string{"AGENTS.md", "AGENTS.override.md"} {
 		if err := os.Remove(filepath.Join(codexHome(p), name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -206,6 +224,28 @@ func (d *Driver) prepare(p driver.Profile, l launch.Profile) error {
 	}
 	args, fileOnly := d.launchSettings(p, l)
 	return driver.WriteFileAtomic(filepath.Join(codexHome(p), "config.toml"), []byte(configTOML(append(args, fileOnly...))))
+}
+
+func makeDirs(p driver.Profile) error {
+	for _, dir := range []string{p.Dir, codexHome(p), workDir(p)} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// prepareIdle prepares the profile for a command other than a turn (status, sign-in, sign-out). While a turn holds
+// the profile, its prompt and config.toml are that turn's and are left alone: rewriting them before Codex has read
+// them would replace or drop the firm's prompt (review F1). They already carry the fixed settings, which these
+// commands also get as -c flags. It never waits for a turn, so hello and status don't stall behind one.
+func (d *Driver) prepareIdle(p driver.Profile) error {
+	m := d.profileLock(p)
+	if !m.TryLock() {
+		return makeDirs(p)
+	}
+	defer m.Unlock()
+	return d.prepare(p, launch.Profile{})
 }
 
 // command builds a Codex invocation in the profile: Helper settings both in config.toml and as -c session flags
@@ -291,7 +331,7 @@ func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderS
 	if bin == "" {
 		return driver.ProviderStatus{Managed: managed}, nil
 	}
-	if err := d.prepare(p, launch.Profile{}); err != nil {
+	if err := d.prepareIdle(p); err != nil {
 		return st, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -396,7 +436,7 @@ func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, step
 	default:
 		return &driver.Failure{Class: protocol.ClassPolicy, Pattern: "signin_kind_invalid"}
 	}
-	if err := d.prepare(p, launch.Profile{}); err != nil {
+	if err := d.prepareIdle(p); err != nil {
 		return &driver.Failure{Class: protocol.ClassFatal, Pattern: "profile_unavailable"}
 	}
 	ctx, cancel := context.WithTimeout(ctx, SignInTimeout)
@@ -428,7 +468,7 @@ func (d *Driver) SignOut(ctx context.Context, p driver.Profile) error {
 	if bin == "" {
 		return errors.New("provider not installed")
 	}
-	if err := d.prepare(p, launch.Profile{}); err != nil {
+	if err := d.prepareIdle(p); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
