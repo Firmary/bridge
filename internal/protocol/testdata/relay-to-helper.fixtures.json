@@ -89,6 +89,17 @@
       "document": {
         "type": "revoke"
       }
+    },
+    {
+      "name": "turn with its launch profile (built-in profile vector)",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
+        "context": "",
+        "prompt": "Hello",
+        "profile": "{\"schema\":1}"
+      }
     }
   ],
   "invalid": [
@@ -275,6 +286,32 @@
         "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
         "userName": "",
         "firmName": "Example Accounting LLC"
+      }
+    },
+    {
+      "name": "launch profile sent as an object",
+      "path": "/profile",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
+        "context": "",
+        "prompt": "Hello",
+        "profile": {
+          "schema": 1
+        }
+      }
+    },
+    {
+      "name": "empty launch profile",
+      "path": "/profile",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
+        "context": "",
+        "prompt": "Hello",
+        "profile": ""
       }
     }
   ]

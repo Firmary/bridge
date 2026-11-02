@@ -18,7 +18,7 @@ func TestVerify(t *testing.T) {
 	good := func() Claims {
 		return Claims{TicketID: "t1", DeviceID: "d1", UserID: "u1", FirmID: "f1", Adapter: "helper-claude-code",
 			Model: "claude-sonnet-4-5", Pin: "2.1.304", Trigger: Trigger{Kind: "interactive", SessionID: "s1"},
-			MaxOutputTokens: 1000, PromptHash: "ab", AccountTypes: []string{"team"},
+			MaxOutputTokens: 1000, PromptHash: "ab", AccountTypes: []string{"team"}, ProfileHash: "cd", ProfileVersion: "p0.f0.u0.t0",
 			IssuedAt: now.Unix(), ExpiresAt: now.Add(2 * time.Minute).Unix()}
 	}
 	with := func(f func(*Claims)) string { c := good(); f(&c); return Sign(priv, c) }
@@ -52,6 +52,8 @@ func TestVerify(t *testing.T) {
 		{"issued in the future", with(func(c *Claims) { c.IssuedAt += 300; c.ExpiresAt += 300 }), ReasonNotYetValid},
 		{"lifetime over 2 min", with(func(c *Claims) { c.ExpiresAt = c.IssuedAt + 600 }), ReasonLifetime},
 		{"no account types", with(func(c *Claims) { c.AccountTypes = nil; c.TicketID = "t2" }), ReasonMissingClaims},
+		{"no profile hash", with(func(c *Claims) { c.ProfileHash = ""; c.TicketID = "t4" }), ReasonMissingClaims},
+		{"no profile version", with(func(c *Claims) { c.ProfileVersion = ""; c.TicketID = "t5" }), ReasonMissingClaims},
 		{"garbage", "a.b", ReasonMalformed},
 	}
 	v := NewVerifier([]ed25519.PublicKey{pub}, func() time.Time { return now })

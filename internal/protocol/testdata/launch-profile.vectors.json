@@ -1,0 +1,40 @@
+{
+  "$comment": "Launch profile hash vectors shared by the relay and the Firmary Helper (src/ai-relay/relay-crypto.ts `launchProfileHash`; Helper protocol.ProfileHash, slice L2). profileHash is lower-case hex SHA-256 over the ASCII bytes `firmary-launch-profile-v1`, then the profile's UTF-8 byte length as an 8-byte big-endian integer, then those bytes: the same recipe as promptHash with one field and its own domain separation. `profile` is the decoded JSON string value of the `turn` message's `profile` field, hashed exactly as received and never re-serialised, so the same JSON value spelled differently hashes differently. Values were computed with Go 1.24 (crypto/sha256, encoding/binary.BigEndian) and the TypeScript implementation is tested against them. Every `profile` here also parses as a valid LaunchProfile (launch-profile.schema.json). The Helper copies this file into internal/protocol/testdata.",
+  "profileHash": [
+    {
+      "name": "built-in profile (version 0)",
+      "profile": "{\"schema\":1}",
+      "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e"
+    },
+    {
+      "name": "Claude Code turn with web search",
+      "profile": "{\"schema\":1,\"systemPrompt\":\"<firmary_required>\\nYou are Firmary's assistant.\\n</firmary_required>\\n<firm_instructions>\\nUse UK spelling.\\n</firm_instructions>\",\"effort\":\"high\",\"tools\":[\"web_search\"],\"maxTurns\":4}",
+      "profileHash": "cc01ef72c401a260cf66a9386d3e8103f4145cc6f6d558386513d907446a1db9"
+    },
+    {
+      "name": "Codex turn with knobs",
+      "profile": "{\"schema\":1,\"systemPrompt\":\"Answer briefly.\",\"effort\":\"low\",\"codex\":{\"reasoningSummary\":\"concise\",\"verbosity\":\"low\"}}",
+      "profileHash": "4b08088f1a6032a9d6232369c40c83bfc2760c7f9b71a1bf6f0c36f70300a3a1"
+    },
+    {
+      "name": "same JSON value spelled with spaces hashes differently",
+      "profile": "{ \"schema\": 1 }",
+      "profileHash": "4c896b95ec42bbaa0150126578ca5524f3275e4b50c2dcf230f7e20969aa2399"
+    },
+    {
+      "name": "same JSON value with keys reordered hashes differently",
+      "profile": "{\"effort\":\"low\",\"schema\":1}",
+      "profileHash": "98938446b6ca471b8b10fd526d7034699a10ee361b57de677d940b83dcc0fcb9"
+    },
+    {
+      "name": "non-ASCII text hashes as raw UTF-8 bytes",
+      "profile": "{\"schema\":1,\"systemPrompt\":\"Café — 東京 €. Résumé ✓\"}",
+      "profileHash": "37292a7361b16fa08757a3ac01d40e64a379fa96ab3ce5be0813e6cc4aea4a00"
+    },
+    {
+      "name": "JSON escape kept as written",
+      "profile": "{\"schema\":1,\"systemPrompt\":\"Caf\\u00e9\"}",
+      "profileHash": "2a3d7fe176deda738b890628006a66116a53ac5dc28ec6a1cd15ef37f18d6a89"
+    }
+  ]
+}
