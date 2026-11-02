@@ -60,10 +60,12 @@ func runArgs(p driver.Profile, model string, l launch.Profile) []string {
 	args := fixedArgs(model, list)
 	if len(tools) > 0 {
 		// Under --permission-mode default nobody can approve a tool in -p, so a tool runs only if it is allowed here.
-		args = append(args, "--allowedTools", list)
-		if l.MaxTurns > 0 {
-			args = append(args, "--max-turns", strconv.Itoa(l.MaxTurns))
+		// A tool means an agent loop, so it is always bounded: by the profile's maxTurns, else by the ceiling.
+		turns := l.MaxTurns
+		if turns <= 0 {
+			turns = launch.MaxTurns
 		}
+		args = append(args, "--allowedTools", list, "--max-turns", strconv.Itoa(turns))
 	}
 	if e, ok := efforts[l.Effort]; ok {
 		args = append(args, "--effort", e)
