@@ -4,6 +4,7 @@ package claudecode
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -154,5 +155,31 @@ func TestRealNoLocalContextReachesAPI(t *testing.T) {
 		if strings.Contains(all, c) {
 			t.Errorf("%s from the repository above the profile reached the API", c)
 		}
+	}
+	// The system prompt is Firmary's, plus only the billing and identity lines the binary itself adds (about 140
+	// bytes). Claude Code's own default prompt is 6-14 KB, depending on the model.
+	prompt, checked := strings.TrimSpace(systemPrompt), 0
+	mu.Lock()
+	defer mu.Unlock()
+	for _, b := range bodies {
+		path, body, _ := strings.Cut(b, "\n")
+		var req struct {
+			System []struct {
+				Text string `json:"text"`
+			} `json:"system"`
+		}
+		if !strings.HasPrefix(path, "/v1/messages") || json.Unmarshal([]byte(body), &req) != nil {
+			continue
+		}
+		var sys strings.Builder
+		for _, s := range req.System {
+			sys.WriteString(s.Text)
+		}
+		if checked++; !strings.Contains(sys.String(), prompt) || sys.Len() > len(prompt)+400 {
+			t.Errorf("the system prompt is not Firmary's (%d bytes)", sys.Len())
+		}
+	}
+	if checked == 0 {
+		t.Error("no messages request had a readable system prompt")
 	}
 }

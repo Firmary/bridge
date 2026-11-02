@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"io"
@@ -25,11 +26,20 @@ var ModelRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._:\[\]-]{0,99}$`)
 // MaxOutputTokensCap bounds the ticket's maxOutputTokens.
 const MaxOutputTokensCap = 128000
 
-// runArgs: print mode with streamed JSON, and nothing that could act on this computer. No tools, no MCP servers,
-// no settings files (user, project or local), no slash commands or skills, nothing saved to resume.
+// systemPrompt is Firmary's system prompt for every turn. Edit system-prompt.md, not this file. It replaces Claude
+// Code's default coding-agent prompt (terminal, file tools, memory folder) through --system-prompt, a documented
+// flag: the binary and its sign-in are unchanged. It goes on the command line, so it must never hold user data.
+//
+//go:embed system-prompt.md
+var systemPrompt string
+
+// runArgs: print mode with streamed JSON, Firmary's own system prompt, and nothing that could act on this computer.
+// No tools, no MCP servers, no settings files (user, project or local), no slash commands or skills, nothing saved
+// to resume.
 func runArgs(model string) []string {
 	return []string{
 		"-p", "--input-format", "text", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+		"--system-prompt", strings.TrimSpace(systemPrompt),
 		"--tools", "", "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands",
 		"--no-session-persistence", "--permission-mode", "default", "--model", model,
 	}

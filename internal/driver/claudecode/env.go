@@ -51,6 +51,9 @@ func Env(inherited []string, configDir string, set map[string]string) []string {
 	// Without this Claude Code attaches git status and recent commit messages from any repository above its working
 	// directory (for example a dotfiles repo at HOME) to the first message.
 	env["CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS"] = "1"
+	// Without this Claude Code attaches the profile's MEMORY.md for the repository above its working directory, even
+	// with --setting-sources ''.
+	env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
 	for k, v := range set {
 		env[k] = v
 	}
