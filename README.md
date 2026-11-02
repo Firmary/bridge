@@ -94,11 +94,12 @@ The logger has no free-text field, and tests enforce this.
 | `internal/devicekey`         | Device key                                                   |
 | `internal/fsperm`            | Data directory and key ownership checks                      |
 | `internal/pairing`           | Pairing record and code-match derivation                     |
-| `internal/protocol`          | Relay messages, stream events, prompt hash                   |
+| `internal/protocol`          | Relay messages, stream events, prompt and profile hashes     |
 | `internal/ticket`            | Turn ticket verification (EdDSA JWT, single use)             |
 | `internal/relay`             | Relay client: auth, pairing, hello, reconnect                |
 | `internal/driver/claudecode` | Claude Code driver: Ensure, Status, Run, environment scrub   |
-| `internal/driver/prompt`     | Firmary's default system prompt for both provider apps (`firmary-system-prompt.md`, placeholder wording) |
+| `internal/driver/prompt`     | Firmary's fallback system prompt for both provider apps (`firmary-system-prompt.md`), used when a turn's launch profile has none |
+| `internal/launch`            | Launch profile parse and hard ceiling: the named settings Firmary may set per turn, and the `hello` capabilities |
 | `internal/driver/codex`      | Codex driver: Ensure, Status, SignIn/SignOut, Run, environment scrub |
 | `internal/helper`            | Turn policy: ticket and account checks, then the driver      |
 | `internal/logx`              | The metadata-only local log                                  |
