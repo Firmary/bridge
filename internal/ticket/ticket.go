@@ -51,8 +51,12 @@ type Claims struct {
 	AccountTypes    []string `json:"accountTypes"`
 	// ProviderOrgIDs, when present, limits the turn to a provider login in one of these organisations.
 	ProviderOrgIDs []string `json:"providerOrgIds,omitzero"`
-	IssuedAt       int64    `json:"iat"`
-	ExpiresAt      int64    `json:"exp"`
+	// ProfileHash binds the turn message's launch profile (protocol.ProfileHash). ProfileVersion names the layer
+	// versions that produced it, for audit only. Both are required.
+	ProfileHash    string `json:"profileHash,omitempty"`
+	ProfileVersion string `json:"profileVersion,omitempty"`
+	IssuedAt       int64  `json:"iat"`
+	ExpiresAt      int64  `json:"exp"`
 }
 
 // Reason is a closed-set rejection code, safe to log and to send back as an error pattern.
@@ -169,7 +173,7 @@ func (v *Verifier) Verify(token string) (Claims, error) {
 	}
 	if c.TicketID == "" || c.DeviceID == "" || c.UserID == "" || c.FirmID == "" || c.Adapter == "" ||
 		c.Model == "" || c.Pin == "" || c.PromptHash == "" || c.Trigger.Kind == "" || c.MaxOutputTokens <= 0 ||
-		len(c.AccountTypes) == 0 {
+		len(c.AccountTypes) == 0 || c.ProfileHash == "" || c.ProfileVersion == "" {
 		return Claims{}, ReasonMissingClaims
 	}
 
