@@ -58,6 +58,20 @@ func TestLaunchProfileVectors(t *testing.T) {
 			t.Errorf("%s:\n got %q\nwant %q", name, got, want)
 		}
 	}
+	// Web search without maxTurns is still bounded, by the ceiling (review F5).
+	l, err := launch.Parse(`{"schema":1,"tools":["web_search"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := append(fixedArgs("claude-sonnet-4-5", "WebSearch"), "--allowedTools", "WebSearch", "--max-turns", "10",
+		"--system-prompt-file", systemPromptFile(prof))
+	if got := runArgs(prof, "claude-sonnet-4-5", l); !slices.Equal(got, want) {
+		t.Errorf("web search without maxTurns:\n got %q\nwant %q", got, want)
+	}
+	// maxTurns without a tool adds nothing: there is no loop to bound.
+	if l, _ := launch.Parse(`{"schema":1,"maxTurns":3}`); slices.Contains(runArgs(prof, "m", l), "--max-turns") {
+		t.Error("--max-turns passed with no tool on")
+	}
 	for name := range claudeVectors {
 		if _, ok := fixtures[name]; !ok {
 			t.Errorf("vector %q has no shared fixture", name)
