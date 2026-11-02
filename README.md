@@ -23,7 +23,9 @@ Status: **first slice, not released, not signed, not for use yet.**
   is copied from another project. The only copied files are data: the relay test vectors and fixtures in
   `internal/protocol/testdata` (from Firmary's own `firmary-os`, `packages/validators/ai-relay/helper/fixtures`),
   Anthropic's public release-signing key `internal/driver/claudecode/anthropic-release-key.asc` and the checksums
-  in `pin.go` (from Anthropic's signed release manifest). Go dependencies are BSD-licensed (`gorilla/websocket`
+  in its `pin.go` (from Anthropic's signed release manifest), and the checksums in `internal/driver/codex/pin.go`
+  (GitHub's published digests of OpenAI's Codex `rust-v0.166.0` release archives, and of the executables inside
+  them). Go dependencies are BSD-licensed (`gorilla/websocket`
   BSD-2-Clause; `ProtonMail/go-crypto`, `cloudflare/circl`, `golang.org/x/crypto`, `golang.org/x/sys`
   BSD-3-Clause), which Apache-2.0 allows.
 
@@ -40,8 +42,16 @@ Status: **first slice, not released, not signed, not for use yet.**
   listens on the computer and no ports are opened.
 - **Its own pinned Claude Code.** The Helper installs its own copy from Anthropic's release bucket and checks it
   against Anthropic's signed manifest *and* a checksum Firmary pins. It runs that copy with the updater off, a
-  separate profile, no tools and a cleaned environment. The person's own Claude Code install and login are never
+  separate profile, no tools, a cleaned environment, and Firmary's system prompt in place of Claude Code's own. The person's own Claude Code install and login are never
   touched.
+- **Its own pinned Codex (driver only).** The Codex driver installs one executable from OpenAI's official GitHub
+  release, checked against two checksums Firmary pins (the release archive and the executable in it). Each profile
+  has its own `CODEX_HOME` with the update check off. Sign-in is Codex's own ChatGPT sign-in, by browser or by device
+  link. A turn is `codex exec --json` with the prompt on stdin, a cleaned environment, Firmary's system prompt in place of
+  Codex's built-in instructions, and settings that leave
+  nothing able to act on the computer: no shell, MCP, apps, plugins, hooks, skills, memories, web search, project
+  instruction files or saved sessions. The one tool Codex always offers, `apply_patch`, runs in a read-only sandbox
+  with approvals off, so every write it tries is refused. The Helper doesn't run it yet (see below).
 - **Turns.** A turn runs only with a ticket signed by Firmary's pinned key that is for this device and its paired
   user, unexpired, unused and matches the prompt.
 - **The terminal screen.** The Helper prints the design's "Always-on server" transcript, changed to the secure
@@ -56,7 +66,8 @@ Status: **first slice, not released, not signed, not for use yet.**
 | -------------------------------------------------------------- | ------------------------------------ |
 | Firmary's relay, pairing API and ticket signer                 | firmary-os S3 (here: fake relay)     |
 | Real relay addresses and ticket keys                           | S3; with no pinned key every turn is refused |
-| Codex (ChatGPT) driver, browser and device-link sign-in        | S9                                   |
+| Codex in the Helper: `helper-codex` adapter, signin/signout over the relay | S9 follow-up (driver is built) |
+| Codex limit windows (percent used); `exec --json` reports none | Needs `codex app-server`, legal sign-off |
 | Claude Code sign-in from the Helper, test request, usage bars  | S9/S10 and firmary-os S11            |
 | Always-on server: one-line install, start with the server, "Always on" | S10                          |
 | Silent self-update                                             | S5                                   |
@@ -87,6 +98,8 @@ The logger has no free-text field, and tests enforce this.
 | `internal/ticket`            | Turn ticket verification (EdDSA JWT, single use)             |
 | `internal/relay`             | Relay client: auth, pairing, hello, reconnect                |
 | `internal/driver/claudecode` | Claude Code driver: Ensure, Status, Run, environment scrub   |
+| `internal/driver/prompt`     | Firmary's system prompt for both provider apps (`firmary-system-prompt.md`) |
+| `internal/driver/codex`      | Codex driver: Ensure, Status, SignIn/SignOut, Run, environment scrub |
 | `internal/helper`            | Turn policy: ticket and account checks, then the driver      |
 | `internal/logx`              | The metadata-only local log                                  |
 | `internal/fakerelay`         | Fake relay used by tests and `cmd/fake-relay`                |
@@ -105,7 +118,8 @@ go run ./cmd/firmary-helper run --env local --relay-url ws://127.0.0.1:PORT/ --t
 ```
 
 The first `run` downloads the pinned Claude Code (about 290 MB). The real-Claude-Code tests are opt-in: set
-`FIRMARY_HELPER_REAL_CLAUDE` to an install directory.
+`FIRMARY_HELPER_REAL_CLAUDE` to an install directory. The real-Codex tests (about 120 MB) are opt-in the same way
+with `FIRMARY_HELPER_REAL_CODEX`.
 
 CI (`.github/workflows/ci.yml`) runs gofmt, vet, the race tests, and builds for macOS, Windows and Linux on
 GitHub-hosted runners.

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/protocol"
 	"github.com/Firmary/bridge/internal/testkit"
 )
@@ -144,7 +145,7 @@ func TestEnvironmentScrub(t *testing.T) {
 	if strings.Contains(string(args), testkit.PromptCanary) || strings.Contains(string(args), testkit.ContextCanary) {
 		t.Error("prompt or context passed on the command line")
 	}
-	for _, want := range []string{"[--tools]\n[]\n", "[--strict-mcp-config]", "[--setting-sources]\n[]\n", "[--disable-slash-commands]", "[--no-session-persistence]"} {
+	for _, want := range []string{"[--system-prompt]\n[" + prompt.System + "]\n", "[--tools]\n[]\n", "[--strict-mcp-config]", "[--setting-sources]\n[]\n", "[--disable-slash-commands]", "[--no-session-persistence]"} {
 		if !strings.Contains(string(args), want) {
 			t.Errorf("missing %q in args:\n%s", want, args)
 		}

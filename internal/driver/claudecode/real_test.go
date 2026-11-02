@@ -4,6 +4,7 @@ package claudecode
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -78,13 +80,15 @@ func TestRealPinnedClaudeCode(t *testing.T) {
 const (
 	gitCommitCanary    = "GIT_COMMIT_CANARY_91"
 	gitUntrackedCanary = "UNTRACKED_FILE_CANARY_37"
+	claudeMDCanary     = "CLAUDE_MD_CANARY_80"
 )
 
 // TestRealNoLocalContextReachesAPI runs the real pinned Claude Code (same opt-in as TestRealPinnedClaudeCode) with
 // HOME set to a git repository above the profile, as a dotfiles setup would have. Claude Code is pointed at a local
 // stub that records every request and answers 400, with a dummy key: no account, no traffic to Anthropic's API.
 // Nothing about the repository (commit messages, untracked file names) may appear in any request, and a prompt
-// starting with "/" must be sent to the model rather than handled locally.
+// starting with "/" must be sent to the model rather than handled locally. Firmary's system prompt must replace
+// Claude Code's built-in one, and no CLAUDE.md (above the profile, or in its config dir) may be read.
 func TestRealNoLocalContextReachesAPI(t *testing.T) {
 	root := os.Getenv("FIRMARY_HELPER_REAL_CLAUDE")
 	if root == "" {
@@ -108,11 +112,22 @@ func TestRealNoLocalContextReachesAPI(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, gitUntrackedCanary), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(home, "CLAUDE.md"), []byte(claudeMDCanary+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	var mu sync.Mutex
-	var bodies []string
+	var bodies, systems []string
 	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
+		var req struct {
+			System json.RawMessage `json:"system"`
+		}
+		if json.Unmarshal(b, &req) == nil && len(req.System) > 0 {
+			mu.Lock()
+			systems = append(systems, string(req.System))
+			mu.Unlock()
+		}
 		mu.Lock()
 		bodies = append(bodies, r.URL.Path+"\n"+string(b))
 		mu.Unlock()
@@ -134,6 +149,13 @@ func TestRealNoLocalContextReachesAPI(t *testing.T) {
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
 	}
 	prof := driver.Profile{UserID: "u1", Dir: filepath.Join(home, ".local", "share", "firmary-helper", "prod", "profiles", "u1", "claude-code")}
+	// A user memory file in the profile's own config dir must not be read either.
+	if err := os.MkdirAll(filepath.Join(prof.Dir, "config"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(prof.Dir, "config", "CLAUDE.md"), []byte(claudeMDCanary+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	_ = d.Run(ctx, prof, driver.Turn{ID: "real-git", Model: "claude-sonnet-4-5", Prompt: "Reply with the single word: pong",
 		MaxOutputTokens: 200}, func(protocol.StreamEvent) {})
@@ -146,6 +168,27 @@ func TestRealNoLocalContextReachesAPI(t *testing.T) {
 	mu.Unlock()
 	if !strings.Contains(all, "/v1/messages") || !strings.Contains(all, "pong") {
 		t.Fatalf("the stub saw no messages request with the prompt; the test proves nothing (%d requests)", len(bodies))
+	}
+	// Firmary's prompt replaces Claude Code's built-in one. Claude Code still adds its own billing header and a
+	// one-line SDK identity block before it; those can't be switched off.
+	if len(systems) == 0 {
+		t.Fatal("no request carried a system prompt")
+	}
+	for _, sys := range systems {
+		var blocks []struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal([]byte(sys), &blocks); err != nil || len(blocks) == 0 || blocks[len(blocks)-1].Text != prompt.System {
+			t.Errorf("Firmary's system prompt is not the last system block: %s", sys)
+		}
+		for _, b := range blocks[:max(len(blocks)-1, 0)] {
+			if len(b.Text) > 200 {
+				t.Errorf("Claude Code added a long system block of its own: %.200q", b.Text)
+			}
+		}
+	}
+	if strings.Contains(all, claudeMDCanary) {
+		t.Error("a CLAUDE.md reached the API")
 	}
 	if !strings.Contains(all, "/logout") {
 		t.Error(`the prompt "/logout" did not reach the API as text`)
