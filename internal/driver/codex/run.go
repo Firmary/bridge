@@ -57,6 +57,10 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 	if t.MaxOutputTokens <= 0 || t.MaxOutputTokens > MaxOutputTokensCap {
 		return fail(protocol.ClassPolicy, "max_output_tokens_invalid")
 	}
+	// Held until Codex exits (deferred), so no status, sign-in or sign-out rewrites this turn's prompt or config.
+	m := d.profileLock(p)
+	m.Lock()
+	defer m.Unlock()
 	if err := d.prepare(p, t.Launch); err != nil {
 		return fail(protocol.ClassFatal, "profile_unavailable")
 	}
