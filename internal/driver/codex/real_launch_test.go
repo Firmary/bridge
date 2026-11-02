@@ -192,4 +192,11 @@ func TestRealLaunchProfile(t *testing.T) {
 			t.Errorf("keep built-in instructions offered tools %v", names)
 		}
 	}
+
+	// A DEL in the prompt is escaped in config.toml, so Codex still parses it and sends the prompt (review F3).
+	for _, r := range run(`{"schema":1,"systemPrompt":"` + custom + `\u007f","codex":{"replaceBuiltinInstructions":false}}`) {
+		if dev := developer(r); len(dev) != 2 || !strings.HasPrefix(dev[1], custom) {
+			t.Errorf("prompt with DEL: developer messages %.300q", dev)
+		}
+	}
 }

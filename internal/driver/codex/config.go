@@ -75,10 +75,11 @@ var settings = []string{
 	`features.sleep_tool=false`,
 }
 
-// tomlString quotes s as a TOML basic string. JSON string escapes are all valid in TOML basic strings.
+// tomlString quotes s as a TOML basic string. JSON string escapes are all valid in TOML basic strings; JSON leaves
+// DEL (U+007F) raw, which TOML forbids in a basic string, so it is escaped too.
 func tomlString(s string) string {
 	b, _ := json.Marshal(s)
-	return string(b)
+	return strings.ReplaceAll(string(b), "\x7f", `\u007f`)
 }
 
 // configTOML renders the launch settings, then the fixed settings, as config.toml (top-level dotted keys).
