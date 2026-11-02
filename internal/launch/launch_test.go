@@ -102,6 +102,18 @@ func TestParseRefusesWhatGoWouldAccept(t *testing.T) {
 		{"repeated tool", `{"schema":1,"tools":["web_search","web_search"]}`},
 		{"repeated key", `{"schema":1,"effort":"low","effort":"max"}`},
 		{"trailing data", `{"schema":1} {"schema":1}`},
+		{"trailing garbage", `{"schema":1}garbage`},
+		{"trailing brace", `{"schema":1}}`},
+		{"trailing bracket", `{"schema":1}]`},
+		{"trailing comma", `{"schema":1},`},
+		{"trailing NUL", "{\"schema\":1}\x00"},
+		{"lone high surrogate", `{"schema":1,"systemPrompt":"a\ud800b"}`},
+		{"lone low surrogate", `{"schema":1,"systemPrompt":"a\udc00b"}`},
+		{"high surrogate at the end", `{"schema":1,"systemPrompt":"a\uD83D"}`},
+		{"surrogates in the wrong order", `{"schema":1,"systemPrompt":"\ude00\ud83d"}`},
+		{"high surrogate before a short escape", `{"schema":1,"systemPrompt":"\ud83d\n"}`},
+		{"invalid UTF-8 byte", "{\"schema\":1,\"systemPrompt\":\"a\xffb\"}"},
+		{"truncated UTF-8 sequence", "{\"schema\":1,\"systemPrompt\":\"a\xe2\x82b\"}"},
 		{"not an object", `[{"schema":1}]`},
 		{"tool in another case", `{"schema":1,"tools":["Web_Search"]}`},
 		{"prompt over the limit", long(32_769, "a")},
@@ -113,6 +125,18 @@ func TestParseRefusesWhatGoWouldAccept(t *testing.T) {
 	}
 	if _, err := Parse(long(32_768, "a")); err != nil {
 		t.Errorf("prompt at the limit: %v", err)
+	}
+	// Well-formed text keeps working: a surrogate pair, an escaped backslash before "u", U+FFFD itself, trailing
+	// whitespace.
+	for doc, want := range map[string]string{
+		`{"schema":1,"systemPrompt":"\ud83d\ude00 ok"}`: "😀 ok",
+		`{"schema":1,"systemPrompt":"C:\\ud800"}`:       `C:\ud800`,
+		`{"schema":1,"systemPrompt":"\ufffd and �"}`:    "\ufffd and \ufffd",
+		"{\"schema\":1,\"systemPrompt\":\"x\"} \n":      "x",
+	} {
+		if p, err := Parse(doc); err != nil || p.SystemPrompt != want {
+			t.Errorf("%s: got %q %v, want %q", doc, p.SystemPrompt, err, want)
+		}
 	}
 	if _, err := Parse(`{"schema":2,"anything":true}`); !errors.Is(err, ReasonUnsupported) {
 		t.Errorf("schema 2: got %v, want profile_unsupported", err)

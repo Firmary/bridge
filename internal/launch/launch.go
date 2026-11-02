@@ -14,8 +14,11 @@ package launch
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"slices"
+	"strconv"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"github.com/Firmary/bridge/internal/protocol"
 )
@@ -132,19 +135,55 @@ func object(b []byte) (map[string]json.RawMessage, bool) {
 	if t, err := dec.Token(); err != nil || t != json.Delim('}') {
 		return nil, false
 	}
-	if _, err := dec.Token(); err == nil { // trailing data
+	if _, err := dec.Token(); err != io.EOF { // anything after the object, valid JSON or not
 		return nil, false
 	}
 	return m, true
 }
 
-// str decodes a JSON string, refusing null and every other type.
+// str decodes a JSON string, refusing null and every other type. It also refuses text that Go would silently turn
+// into U+FFFD, so the provider never gets text other than what the server signed: invalid UTF-8, and a \uD800-\uDFFF
+// escape that isn't half of a surrogate pair.
 func str(v json.RawMessage) (string, bool) {
-	if len(v) == 0 || v[0] != '"' {
+	if len(v) == 0 || v[0] != '"' || !utf8.Valid(v) || !pairedSurrogates(v) {
 		return "", false
 	}
 	var s string
 	return s, json.Unmarshal(v, &s) == nil
+}
+
+// pairedSurrogates reports whether every surrogate escape in the JSON string token v is a high surrogate directly
+// followed by a low one.
+func pairedSurrogates(v []byte) bool {
+	hex4 := func(i int) (rune, bool) {
+		if i+6 > len(v) || v[i] != '\\' || v[i+1] != 'u' {
+			return 0, false
+		}
+		n, err := strconv.ParseUint(string(v[i+2:i+6]), 16, 16)
+		return rune(n), err == nil
+	}
+	for i := 0; i < len(v); i++ {
+		if v[i] != '\\' {
+			continue
+		}
+		r, ok := hex4(i)
+		if !ok {
+			i++ // a two-character escape such as \" or \\
+			continue
+		}
+		switch {
+		case r >= 0xDC00 && r <= 0xDFFF:
+			return false
+		case r >= 0xD800 && r <= 0xDBFF:
+			lo, ok := hex4(i + 6)
+			if !ok || lo < 0xDC00 || lo > 0xDFFF {
+				return false
+			}
+			i += 6
+		}
+		i += 5
+	}
+	return true
 }
 
 // oneOf decodes a string that must be one of values.
