@@ -19,7 +19,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 
-	"github.com/Firmary/firmary-helper/internal/driver"
+	"github.com/Firmary/bridge/internal/driver"
 )
 
 // Anthropic's Claude Code release signing key, from https://downloads.claude.ai/keys/claude-code.asc.

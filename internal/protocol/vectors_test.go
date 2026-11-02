@@ -9,9 +9,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Firmary/firmary-helper/internal/devicekey"
-	"github.com/Firmary/firmary-helper/internal/pairing"
-	"github.com/Firmary/firmary-helper/internal/ticket"
+	"github.com/Firmary/bridge/internal/devicekey"
+	"github.com/Firmary/bridge/internal/pairing"
+	"github.com/Firmary/bridge/internal/ticket"
 )
 
 // The testdata files are copied from Firmary's packages/validators/ai-relay/helper/fixtures, so both sides check the

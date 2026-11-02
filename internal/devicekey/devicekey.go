@@ -16,7 +16,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/Firmary/firmary-helper/internal/fsperm"
+	"github.com/Firmary/bridge/internal/fsperm"
 )
 
 // AuthContext is the domain-separation prefix for relay challenge signatures.

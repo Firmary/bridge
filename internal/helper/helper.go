@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Firmary/firmary-helper/internal/driver"
-	"github.com/Firmary/firmary-helper/internal/logx"
-	"github.com/Firmary/firmary-helper/internal/pairing"
-	"github.com/Firmary/firmary-helper/internal/protocol"
-	"github.com/Firmary/firmary-helper/internal/ticket"
+	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/logx"
+	"github.com/Firmary/bridge/internal/pairing"
+	"github.com/Firmary/bridge/internal/protocol"
+	"github.com/Firmary/bridge/internal/ticket"
 )
 
 // AdapterID is the router adapter this Helper serves with the Claude Code driver.

@@ -20,10 +20,10 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/Firmary/firmary-helper/internal/devicekey"
-	"github.com/Firmary/firmary-helper/internal/logx"
-	"github.com/Firmary/firmary-helper/internal/pairing"
-	"github.com/Firmary/firmary-helper/internal/protocol"
+	"github.com/Firmary/bridge/internal/devicekey"
+	"github.com/Firmary/bridge/internal/logx"
+	"github.com/Firmary/bridge/internal/pairing"
+	"github.com/Firmary/bridge/internal/protocol"
 )
 
 // TurnHandler runs turns. HandleTurn is called on its own goroutine and must emit a terminal event.
@@ -42,6 +42,7 @@ type Config struct {
 	HelperVersion   string
 	Log             *logx.Logger
 	Handler         TurnHandler
+	ShowConnected   func()                // tells the person the relay was reached; may be nil
 	ShowPairingCode func(code string)     // shows the code to the person; never logged
 	ShowPaired      func(firmName string) // tells the person which firm they paired to; never logged
 	MinBackoff      time.Duration
@@ -207,6 +208,9 @@ func (c *Client) session(ctx context.Context, attempt int) error {
 	ws, _, err := c.dialer.DialContext(ctx, c.cfg.URL, nil)
 	if err != nil {
 		return sessionError("dial_failed")
+	}
+	if c.cfg.ShowConnected != nil {
+		c.cfg.ShowConnected()
 	}
 	ws.SetReadLimit(maxMessageBytes)
 	_ = ws.SetReadDeadline(time.Now().Add(handshakeTimeout))

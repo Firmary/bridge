@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Firmary/firmary-helper/internal/driver"
-	"github.com/Firmary/firmary-helper/internal/driver/claudecode"
-	"github.com/Firmary/firmary-helper/internal/fakerelay"
-	"github.com/Firmary/firmary-helper/internal/helper"
-	"github.com/Firmary/firmary-helper/internal/logx"
-	"github.com/Firmary/firmary-helper/internal/pairing"
-	"github.com/Firmary/firmary-helper/internal/protocol"
-	"github.com/Firmary/firmary-helper/internal/relay"
-	"github.com/Firmary/firmary-helper/internal/testkit"
-	"github.com/Firmary/firmary-helper/internal/ticket"
+	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/claudecode"
+	"github.com/Firmary/bridge/internal/fakerelay"
+	"github.com/Firmary/bridge/internal/helper"
+	"github.com/Firmary/bridge/internal/logx"
+	"github.com/Firmary/bridge/internal/pairing"
+	"github.com/Firmary/bridge/internal/protocol"
+	"github.com/Firmary/bridge/internal/relay"
+	"github.com/Firmary/bridge/internal/testkit"
+	"github.com/Firmary/bridge/internal/ticket"
 )
 
 func recv[T any](t *testing.T, ch <-chan T, what string) T {

@@ -3,7 +3,7 @@ package claudecode
 import (
 	"regexp"
 
-	"github.com/Firmary/firmary-helper/internal/protocol"
+	"github.com/Firmary/bridge/internal/protocol"
 )
 
 // patterns are checked in order. Each has a name that is safe to log and to send to Firmary; the matched text is

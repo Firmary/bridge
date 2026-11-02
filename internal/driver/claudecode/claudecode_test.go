@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Firmary/firmary-helper/internal/driver"
-	"github.com/Firmary/firmary-helper/internal/protocol"
-	"github.com/Firmary/firmary-helper/internal/testkit"
+	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/protocol"
+	"github.com/Firmary/bridge/internal/testkit"
 )
 
 const testPlatform = "linux-x64"

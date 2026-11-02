@@ -1,4 +1,4 @@
-module github.com/Firmary/firmary-helper
+module github.com/Firmary/bridge
 
 go 1.27.3
 

@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Firmary/firmary-helper/internal/driver"
-	"github.com/Firmary/firmary-helper/internal/protocol"
+	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/protocol"
 )
 
 // ModelRe is what a model id may look like. It starts with a letter so it can never be read as a flag.

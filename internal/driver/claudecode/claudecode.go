@@ -20,8 +20,8 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 
-	"github.com/Firmary/firmary-helper/internal/driver"
-	"github.com/Firmary/firmary-helper/internal/protocol"
+	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/protocol"
 )
 
 // ID is the provider id used in hello and logs.

@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Firmary/firmary-helper/internal/driver"
-	"github.com/Firmary/firmary-helper/internal/protocol"
+	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/protocol"
 )
 
 // TestRealPinnedClaudeCode downloads the real pinned Claude Code from Anthropic (about 290 MB), verifies it, and

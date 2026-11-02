@@ -1,6 +1,6 @@
 package claudecode
 
-import "github.com/Firmary/firmary-helper/internal/driver"
+import "github.com/Firmary/bridge/internal/driver"
 
 // BuiltInPin is the Claude Code version this build runs until the signed update manifest (slice S5) supplies pins.
 // Checksums are copied from Anthropic's signed manifest for 2.1.304

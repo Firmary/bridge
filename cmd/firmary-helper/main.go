@@ -1,4 +1,5 @@
-// Command firmary-helper is the Firmary Helper.
+// Command firmary-helper is the Helper (see brand.Name): it keeps one outgoing connection to Firmary's relay and
+// runs the person's own provider app when they ask for something in Firmary.
 package main
 
 import (
@@ -15,14 +16,17 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 
-	"github.com/Firmary/firmary-helper/internal/driver/claudecode"
-	"github.com/Firmary/firmary-helper/internal/fsperm"
-	"github.com/Firmary/firmary-helper/internal/helper"
-	"github.com/Firmary/firmary-helper/internal/logx"
-	"github.com/Firmary/firmary-helper/internal/relay"
-	"github.com/Firmary/firmary-helper/internal/ticket"
+	"github.com/Firmary/bridge/internal/brand"
+	"github.com/Firmary/bridge/internal/console"
+	"github.com/Firmary/bridge/internal/driver/claudecode"
+	"github.com/Firmary/bridge/internal/fsperm"
+	"github.com/Firmary/bridge/internal/helper"
+	"github.com/Firmary/bridge/internal/logx"
+	"github.com/Firmary/bridge/internal/relay"
+	"github.com/Firmary/bridge/internal/ticket"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -68,7 +72,7 @@ func defaultDataDir() string {
 	home, _ := os.UserHomeDir()
 	switch runtime.GOOS {
 	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "Firmary Helper")
+		return filepath.Join(home, "Library", "Application Support", brand.Name)
 	case "windows":
 		if d := os.Getenv("LOCALAPPDATA"); d != "" {
 			return filepath.Join(d, "Firmary", "Helper")
@@ -154,31 +158,30 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	out := console.Printer{W: os.Stdout}
+	out.Banner(version, runtime.GOOS, runtime.GOARCH)
 	pin := claudecode.BuiltInPin
-	fmt.Printf("Checking Claude Code %s ...\n", pin.Version)
 	if err := drv.Ensure(ctx, pin); err != nil {
 		log.Log(logx.ProviderEnsure, logx.Fields{Provider: claudecode.ID, Version: pin.Version, Reason: "failed"})
-		fmt.Fprintln(os.Stderr, "Claude Code could not be installed:", err)
+		console.Printer{W: os.Stderr}.ProviderFailed("Claude Code", err)
 	} else {
 		log.Log(logx.ProviderEnsure, logx.Fields{Provider: claudecode.ID, Version: pin.Version, Reason: "ok"})
+		out.ProviderReady("Claude Code")
 	}
 
 	h := &helper.Helper{Driver: drv, Pin: pin, Verifier: ticket.NewVerifier(keys, nil), DataDir: envDir,
 		Version: version, Ring: *ring, Log: log}
+	var reached sync.Once // say it once, not on every reconnect
 	client, err := relay.New(relay.Config{
 		URL: env.relayURL, Env: *envName, HelperVersion: version, Log: log, Handler: h,
 		KeyPath: filepath.Join(envDir, "device.key"), PairingPath: filepath.Join(envDir, "pairing.json"),
-		ShowPairingCode: func(code string) {
-			fmt.Printf("\nPairing code: %s\nConfirm that Firmary shows the same code, then approve it there.\n\n", code)
-		},
-		ShowPaired: func(firmName string) {
-			fmt.Printf("Paired to %s. If that is not your firm, stop the Helper and unpair it in Firmary.\n", firmName)
-		},
+		ShowConnected:   func() { reached.Do(out.Reached) },
+		ShowPairingCode: out.PairingCode,
+		ShowPaired:      out.Paired,
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Println("Connecting to", env.relayURL)
 	if err := client.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
