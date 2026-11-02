@@ -158,12 +158,12 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	out := console.Printer{W: os.Stdout}
+	out := &console.Printer{W: os.Stdout, Terminal: console.IsTerminal(os.Stdout)}
 	out.Banner(version, runtime.GOOS, runtime.GOARCH)
 	pin := claudecode.BuiltInPin
 	if err := drv.Ensure(ctx, pin); err != nil {
 		log.Log(logx.ProviderEnsure, logx.Fields{Provider: claudecode.ID, Version: pin.Version, Reason: "failed"})
-		console.Printer{W: os.Stderr}.ProviderFailed("Claude Code", err)
+		(&console.Printer{W: os.Stderr}).ProviderFailed("Claude Code", err)
 	} else {
 		log.Log(logx.ProviderEnsure, logx.Fields{Provider: claudecode.ID, Version: pin.Version, Reason: "ok"})
 		out.ProviderReady("Claude Code")

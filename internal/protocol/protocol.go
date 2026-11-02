@@ -75,13 +75,15 @@ type PairingReveal struct {
 	Nonce string `json:"nonce"`
 }
 
-// Paired: the person confirmed the code in Firmary, binding this key to them. FirmName is the firm's display name,
-// shown on the Helper ("Paired to ...") so pairing to the wrong account is noticed.
+// Paired: the person confirmed the code in Firmary, binding this key to them. UserName is the person's display name
+// and FirmName the firm's; the Helper shows both ("Paired to <person> · <firm>") so pairing to the wrong account is
+// noticed, and never logs or stores them.
 type Paired struct {
 	Type     string `json:"type"`
 	DeviceID string `json:"deviceId"`
 	UserID   string `json:"userId"`
 	FirmID   string `json:"firmId"`
+	UserName string `json:"userName"`
 	FirmName string `json:"firmName"`
 }
 

@@ -110,7 +110,7 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 		pairingPath: filepath.Join(data, "pairing.json"), keyPath: filepath.Join(data, "device.key")}
 	client, err := relay.New(relay.Config{URL: r.URL, Env: "local", KeyPath: g.keyPath, PairingPath: g.pairingPath,
 		HelperVersion: "0.0.0-test", Log: log, Handler: h, ShowPairingCode: func(c string) { g.shown <- c },
-		ShowPaired: func(name string) { g.paired <- name },
+		ShowPaired: func(user, firm string) { g.paired <- user + " · " + firm },
 		MinBackoff: 10 * time.Millisecond, MaxBackoff: 50 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	if !r.Confirm(g.code) {
 		t.Fatal("confirm failed")
 	}
-	if name := recv(t, g.paired, "paired to"); name != fakerelay.FirmName {
+	if name := recv(t, g.paired, "paired to"); name != fakerelay.UserName+" · "+fakerelay.FirmName {
 		t.Fatalf("paired to %q", name)
 	}
 	g.hello = recv(t, r.Hellos, "hello")
@@ -262,7 +262,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	}
 	all := written.String()
 	for _, canary := range []string{testkit.PromptCanary, testkit.ContextCanary, testkit.OutputCanary, testkit.StderrCanary,
-		testkit.EmailCanary, testkit.OrgCanary, testkit.EnvCanary, code, code2, "sk-ant"} {
+		testkit.EmailCanary, testkit.OrgCanary, testkit.EnvCanary, code, code2, fakerelay.UserName, fakerelay.FirmName, "sk-ant"} {
 		if strings.Contains(all, canary) {
 			t.Errorf("never-logged value %q found in the Helper's files", canary)
 		}
