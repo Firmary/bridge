@@ -272,6 +272,13 @@ func (r *Relay) WaitConnected(ctx context.Context) (Device, error) {
 	}
 }
 
+// The built-in launch profile (version 0): the Helper's embedded prompt, no tools. Claims binds it and SendTurn sends
+// it.
+const (
+	BuiltInProfile        = `{"schema":1}`
+	BuiltInProfileVersion = "p0.f0.u0.t0"
+)
+
 // Claims returns valid claims for a turn on the connected device. They allow business plans, so, as D7 requires,
 // they bind the turn to the firm's provider organisation: the one the fake claude reports.
 func (r *Relay) Claims(d Device, pin, context, prompt string) ticket.Claims {
@@ -281,13 +288,20 @@ func (r *Relay) Claims(d Device, pin, context, prompt string) ticket.Claims {
 		ConversationID: newID(), Adapter: "helper-claude-code", Model: "claude-sonnet-4-5", Pin: pin,
 		Trigger: ticket.Trigger{Kind: "interactive", SessionID: newID()}, MaxOutputTokens: 2000,
 		PromptHash: protocol.PromptHash(context, prompt, nil), AccountTypes: []string{"pro", "max", "team", "enterprise"},
-		ProviderOrgIDs: []string{testkit.OrgID}, IssuedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix(),
+		ProviderOrgIDs: []string{testkit.OrgID}, ProfileHash: protocol.ProfileHash(BuiltInProfile),
+		ProfileVersion: BuiltInProfileVersion, IssuedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix(),
 	}
 }
 
-// SendTurn signs c and sends the turn.
+// SendTurn signs c and sends the turn with the built-in launch profile.
 func (r *Relay) SendTurn(c ticket.Claims, context, prompt string) error {
-	return r.send(protocol.Turn{Type: protocol.TypeTurn, TurnID: c.TicketID, Ticket: ticket.Sign(r.TicketKey, c), Context: context, Prompt: prompt})
+	return r.SendTurnProfile(c, context, prompt, BuiltInProfile)
+}
+
+// SendTurnProfile signs c and sends the turn with profile as its launch profile text. c.ProfileHash is sent as set.
+func (r *Relay) SendTurnProfile(c ticket.Claims, context, prompt, profile string) error {
+	return r.send(protocol.Turn{Type: protocol.TypeTurn, TurnID: c.TicketID, Ticket: ticket.Sign(r.TicketKey, c), Context: context,
+		Prompt: prompt, Profile: profile})
 }
 
 // SendRaw sends any message.

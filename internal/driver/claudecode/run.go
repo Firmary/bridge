@@ -18,6 +18,7 @@ import (
 
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/driver/prompt"
+	"github.com/Firmary/bridge/internal/launch"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -27,16 +28,47 @@ var ModelRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._:\[\]-]{0,99}$`)
 // MaxOutputTokensCap bounds the ticket's maxOutputTokens.
 const MaxOutputTokensCap = 128000
 
-// runArgs: print mode with streamed JSON, Firmary's system prompt, and nothing that could act on this computer. No
-// tools, no MCP servers, no settings files (user, project or local), no slash commands or skills, nothing saved to
-// resume.
-func runArgs(p driver.Profile, model string) []string {
-	args := []string{
+// fixedArgs: print mode with streamed JSON and nothing that could act on this computer. No MCP servers, no settings
+// files (user, project or local), no slash commands or skills, nothing saved to resume, and only the tools named in
+// --tools, which come from the catalog (toolNames), never from the server. A launch profile can't change any of these.
+func fixedArgs(model, tools string) []string {
+	return []string{
 		"-p", "--input-format", "text", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
-		"--tools", "", "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands",
+		"--tools", tools, "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands",
 		"--no-session-persistence", "--permission-mode", "default", "--model", model,
 	}
-	return append(args, systemPromptArgs(p)...)
+}
+
+// toolNames maps each launch catalog tool to the Claude Code tools it turns on. WebSearch runs on Anthropic's servers;
+// WebFetch, which fetches from this computer, is never included.
+var toolNames = map[string][]string{
+	launch.ToolWebSearch: {"WebSearch"},
+}
+
+// efforts maps each launch effort to Claude Code's --effort level (low, medium, high, xhigh, max on 2.1.304).
+var efforts = map[string]string{"low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"}
+
+// runArgs: the fixed flags, then the launch profile's knobs, each mapped to a flag and value from this package's own
+// tables. The only server string that reaches the command line is the model (from the ticket, checked by ModelRe);
+// max turns is a checked number, and the system prompt goes in a file whose path is passed.
+func runArgs(p driver.Profile, model string, l launch.Profile) []string {
+	var tools []string
+	for _, name := range l.Tools {
+		tools = append(tools, toolNames[name]...)
+	}
+	list := strings.Join(tools, ",")
+	args := fixedArgs(model, list)
+	if len(tools) > 0 {
+		// Under --permission-mode default nobody can approve a tool in -p, so a tool runs only if it is allowed here.
+		args = append(args, "--allowedTools", list)
+		if l.MaxTurns > 0 {
+			args = append(args, "--max-turns", strconv.Itoa(l.MaxTurns))
+		}
+	}
+	if e, ok := efforts[l.Effort]; ok {
+		args = append(args, "--effort", e)
+	}
+	return append(args, systemPromptArgs(p, l)...)
 }
 
 // systemPromptFile is where the turn's system prompt is written for --system-prompt-file.
@@ -44,16 +76,28 @@ func systemPromptFile(p driver.Profile) string {
 	return filepath.Join(p.Dir, "firmary-system-prompt.md")
 }
 
+// systemPromptText is the turn's system prompt: the launch profile's, else Firmary's built-in default.
+func systemPromptText(l launch.Profile) string {
+	if l.SystemPrompt != "" {
+		return l.SystemPrompt
+	}
+	return prompt.Default
+}
+
 // writeSystemPrompt writes the turn's resolved system prompt to the profile (0600, rewritten every turn). It goes
-// in a file, never on the command line: once firm and personal instructions arrive it is user data, and other local
-// users can read the process list.
+// in a file, never on the command line: it holds firm and personal instructions, and other local users can read the
+// process list.
 func writeSystemPrompt(p driver.Profile, text string) error {
 	return driver.WriteFileAtomic(systemPromptFile(p), []byte(text))
 }
 
 // systemPromptArgs is the one place the Claude Code driver passes Firmary's system prompt. --system-prompt-file
-// replaces Claude Code's built-in prompt.
-func systemPromptArgs(p driver.Profile) []string {
+// replaces Claude Code's built-in prompt (the default); a profile that keeps the built-in prompt appends Firmary's
+// with --append-system-prompt-file instead.
+func systemPromptArgs(p driver.Profile, l launch.Profile) []string {
+	if l.ClaudeCode.KeepBuiltinInstructions {
+		return []string{"--append-system-prompt-file", systemPromptFile(p)}
+	}
 	return []string{"--system-prompt-file", systemPromptFile(p)}
 }
 
@@ -83,12 +127,11 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 	if err := prepare(p); err != nil {
 		return fail(protocol.ClassFatal, "profile_unavailable")
 	}
-	// The launch profile's prompt replaces prompt.Default here once turns carry one.
-	if err := writeSystemPrompt(p, prompt.Default); err != nil {
+	if err := writeSystemPrompt(p, systemPromptText(t.Launch)); err != nil {
 		return fail(protocol.ClassFatal, "profile_unavailable")
 	}
 
-	cmd := exec.CommandContext(ctx, bin, runArgs(p, t.Model)...)
+	cmd := exec.CommandContext(ctx, bin, runArgs(p, t.Model, t.Launch)...)
 	cmd.Dir = workDir(p)
 	set := map[string]string{"CLAUDE_CODE_MAX_OUTPUT_TOKENS": strconv.Itoa(t.MaxOutputTokens)}
 	for k, v := range d.extraEnv {

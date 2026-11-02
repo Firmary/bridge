@@ -11,13 +11,14 @@ import (
 // config.schema.json (codex-rs/core/config.schema.json at rust-v0.166.0); the pinned binary runs with
 // --strict-config, so a key that a later pin drops fails the turn instead of being silently ignored.
 //
-// Firmary's system prompt replaces Codex's built-in instructions through model_instructions_file, a per-profile
-// setting (see profileSettings).
+// Firmary's system prompt, effort, web search and the Codex knobs are per-turn settings from the launch profile (see
+// launchSettings). They are written before these, and a test checks they never share a key.
 //
 // Together they mean nothing in a turn can act on this computer: no shell, no file edits (the one tool Codex always
 // offers, apply_patch, comes from the model catalog and can't be switched off; the read-only sandbox and "never"
-// approval reject every write it tries), no MCP servers, apps, plugins, hooks, skills, memories, web search, browser
-// or computer use, no AGENTS.md or other project instructions, no environment context, and nothing saved.
+// approval reject every write it tries), no MCP servers, apps, plugins, hooks, skills, memories, browser or computer
+// use, no AGENTS.md or other project instructions, no environment context, and nothing saved. Web search, which OpenAI
+// runs, is off unless the launch profile turns it on.
 var settings = []string{
 	// Updates come only from Firmary's pin: Codex's own update check and prompt are off.
 	`check_for_update_on_startup=false`,
@@ -27,7 +28,6 @@ var settings = []string{
 	// Tools that do run (apply_patch) are sandboxed read-only and are never escalated for approval.
 	`approval_policy="never"`,
 	`sandbox_mode="read-only"`,
-	`web_search="disabled"`,
 	// No project instruction files (AGENTS.md and fallbacks) and no parent-directory project root.
 	`project_doc_max_bytes=0`,
 	`project_root_markers=[]`,
@@ -81,22 +81,23 @@ func tomlString(s string) string {
 	return string(b)
 }
 
-// configTOML renders the settings as config.toml (top-level dotted keys).
-func configTOML(extra []string) string {
+// configTOML renders the launch settings, then the fixed settings, as config.toml (top-level dotted keys).
+func configTOML(perTurn []string) string {
 	var b strings.Builder
 	b.WriteString("# Written by the " + brand.Name + " before every run. Changes here are replaced.\n")
-	for _, s := range append(append([]string(nil), settings...), extra...) {
+	for _, s := range append(append([]string(nil), perTurn...), settings...) {
 		k, v, _ := strings.Cut(s, "=")
 		b.WriteString(k + " = " + v + "\n")
 	}
 	return b.String()
 }
 
-// configArgs renders the settings as -c session flags. Codex ranks these above a project's .codex/config.toml and
-// the user config; only machine-wide managed configuration ranks higher.
-func configArgs(extra []string) []string {
+// configArgs renders the launch settings, then the fixed settings, as -c session flags, so a fixed setting is always
+// the last word. Codex ranks these above a project's .codex/config.toml and the user config; only machine-wide
+// managed configuration ranks higher.
+func configArgs(perTurn []string) []string {
 	var out []string
-	for _, s := range append(append([]string(nil), settings...), extra...) {
+	for _, s := range append(append([]string(nil), perTurn...), settings...) {
 		out = append(out, "-c", s)
 	}
 	return out
