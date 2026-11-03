@@ -96,6 +96,82 @@
         "provider": "claude-code",
         "kind": "browser"
       }
+    },
+    {
+      "name": "hello declaring launch capabilities",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [1],
+          "tools": ["web_search"],
+          "claudeKnobs": ["replaceBuiltinInstructions"],
+          "codexKnobs": ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]
+        }
+      }
+    },
+    {
+      "name": "hello declaring a tool this server doesn't know",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [1],
+          "tools": ["web_search", "future_tool"],
+          "claudeKnobs": ["replaceBuiltinInstructions"],
+          "codexKnobs": ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]
+        }
+      }
     }
   ],
   "invalid": [
@@ -380,6 +456,122 @@
           }
         ],
         "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "launch capabilities with no profile schema",
+      "path": "/launch/profileSchemas",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [],
+          "tools": ["web_search"],
+          "claudeKnobs": ["replaceBuiltinInstructions"],
+          "codexKnobs": ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]
+        }
+      }
+    },
+    {
+      "name": "launch tool name with a space",
+      "path": "/launch/tools/0",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [1],
+          "tools": ["web search"],
+          "claudeKnobs": ["replaceBuiltinInstructions"],
+          "codexKnobs": ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]
+        }
+      }
+    },
+    {
+      "name": "launch capabilities without Codex knobs",
+      "path": "/launch/codexKnobs",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [1],
+          "tools": ["web_search"],
+          "claudeKnobs": ["replaceBuiltinInstructions"]
+        }
       }
     }
   ]

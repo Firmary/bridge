@@ -207,3 +207,40 @@ func TestSharedFixturesRoundTrip(t *testing.T) {
 	check("stream-event.fixtures.json", only(roundTrip[StreamEvent]))
 	check("ticket-claims.fixtures.json", only(roundTrip[ticket.Claims]))
 }
+
+// TestLaunchProfileHashVectors: the Helper's ProfileHash matches Firmary's launchProfileHash on the shared vectors,
+// and the shared turn fixture's profile hashes to the shared ticket fixture's profileHash.
+func TestLaunchProfileHashVectors(t *testing.T) {
+	raw, err := os.ReadFile("testdata/launch-profile.vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		ProfileHash []struct{ Name, Profile, ProfileHash string }
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.ProfileHash) == 0 {
+		t.Fatal("no profileHash vectors")
+	}
+	for _, c := range v.ProfileHash {
+		if got := ProfileHash(c.Profile); got != c.ProfileHash {
+			t.Errorf("profileHash %q: %s, want %s", c.Name, got, c.ProfileHash)
+		}
+	}
+
+	turn, err := Decode[Turn](fixture(t, "relay-to-helper.fixtures.json", "turn with its launch profile (built-in profile vector)"))
+	if err != nil || turn.Profile == "" {
+		t.Fatalf("turn %+v, err %v", turn, err)
+	}
+	var claims struct {
+		ProfileHash string `json:"profileHash"`
+	}
+	if err := json.Unmarshal(fixture(t, "ticket-claims.fixtures.json", "turn bound to its launch profile (built-in profile vector)"), &claims); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProfileHash(turn.Profile); got != claims.ProfileHash {
+		t.Fatalf("turn fixture profile hashes to %s, ticket fixture says %s", got, claims.ProfileHash)
+	}
+}

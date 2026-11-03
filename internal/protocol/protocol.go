@@ -117,10 +117,22 @@ type Hello struct {
 	Ring                    string         `json:"ring"`
 	Providers               []ProviderInfo `json:"providers"`
 	AcceptedConsentRevision int            `json:"acceptedConsentRevision"`
+	// Launch is what launch profiles this build can carry out (internal/launch). Every Helper sends it.
+	Launch *LaunchCapabilities `json:"launch,omitempty"`
+}
+
+// LaunchCapabilities lists the launch profile schemas, catalog tools and provider knobs (field names under the
+// profile's claudeCode and codex objects) this Helper build maps. The server never sends anything else.
+type LaunchCapabilities struct {
+	ProfileSchemas []int    `json:"profileSchemas"`
+	Tools          []string `json:"tools"`
+	ClaudeKnobs    []string `json:"claudeKnobs"`
+	CodexKnobs     []string `json:"codexKnobs"`
 }
 
 // Turn asks the Helper to run one turn. TurnID must equal the ticket's ticketId. Schema is the structured-output
-// JSON Schema sent as a JSON string; nil means absent.
+// JSON Schema sent as a JSON string; nil means absent. Profile is the turn's launch profile as JSON text
+// (internal/launch), bound by the ticket's profileHash; the Helper refuses a turn without one.
 type Turn struct {
 	Type    string  `json:"type"`
 	TurnID  string  `json:"turnId"`
@@ -128,6 +140,7 @@ type Turn struct {
 	Context string  `json:"context"`
 	Prompt  string  `json:"prompt"`
 	Schema  *string `json:"schema,omitempty"`
+	Profile string  `json:"profile,omitempty"`
 }
 
 // PromptHash hashes the turn's decoded context, prompt and schema strings (not their raw JSON tokens).
@@ -232,17 +245,32 @@ func Done(sessionID string, tok *TokenCounts) StreamEvent {
 	return StreamEvent{T: EvDone, ProviderSessionID: sessionID, Tokens: tok}
 }
 
-// promptHashContext domain-separates the prompt hash.
-const promptHashContext = "firmary-turn-v1"
+// Domain separation for the prompt and profile hashes.
+const (
+	promptHashContext  = "firmary-turn-v1"
+	profileHashContext = "firmary-launch-profile-v1"
+)
 
 // PromptHash is the hash a ticket's promptHash claim must equal: lowercase hex SHA-256 over the context string,
 // then each of context, prompt and schema as an 8-byte big-endian length followed by its bytes. A missing schema
 // hashes as zero length.
 func PromptHash(context, prompt string, schema []byte) string {
+	return lengthPrefixedHash(promptHashContext, []byte(context), []byte(prompt), schema)
+}
+
+// ProfileHash is the hash a ticket's profileHash claim must equal: the same recipe as PromptHash with its own context
+// string and one part, the turn's decoded profile string exactly as received (never re-serialised).
+func ProfileHash(profile string) string {
+	return lengthPrefixedHash(profileHashContext, []byte(profile))
+}
+
+// lengthPrefixedHash is lowercase hex SHA-256 over context, then each part as an 8-byte big-endian length and its
+// bytes.
+func lengthPrefixedHash(context string, parts ...[]byte) string {
 	h := sha256.New()
-	h.Write([]byte(promptHashContext))
+	h.Write([]byte(context))
 	var n [8]byte
-	for _, part := range [][]byte{[]byte(context), []byte(prompt), schema} {
+	for _, part := range parts {
 		binary.BigEndian.PutUint64(n[:], uint64(len(part)))
 		h.Write(n[:])
 		h.Write(part)

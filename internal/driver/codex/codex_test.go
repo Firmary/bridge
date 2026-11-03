@@ -15,6 +15,7 @@ import (
 
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/driver/prompt"
+	"github.com/Firmary/bridge/internal/launch"
 	"github.com/Firmary/bridge/internal/protocol"
 	"github.com/Firmary/bridge/internal/testkit"
 )
@@ -315,7 +316,7 @@ func TestPrepareRemovesGlobalInstructions(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(codexHome(prof), "config.toml"), []byte("[mcp_servers.x]\ncommand = \"/bin/sh\"\n"), 0o600)
 	os.WriteFile(instructionsFile(prof), []byte("changed"), 0o600)
-	if err := d.prepare(prof); err != nil {
+	if err := d.prepare(prof, launch.Profile{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, n := range []string{"AGENTS.md", "AGENTS.override.md"} {

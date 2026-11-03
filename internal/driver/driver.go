@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Firmary/bridge/internal/launch"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -42,6 +43,8 @@ type Turn struct {
 	Context         string
 	Prompt          string
 	MaxOutputTokens int
+	// Launch is the turn's checked launch profile. Each driver maps it to its own fixed flags or config.
+	Launch launch.Profile
 }
 
 // Failure is a classified run failure: an error class and a pattern name. It never carries provider text.

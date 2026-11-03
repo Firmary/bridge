@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -38,7 +39,35 @@ const (
 	DeviceCode = "WXYZ-12345"
 	// SlowPrompt makes the fake claude or codex sleep for a minute before replying.
 	SlowPrompt = "SLOW_TURN_PROMPT_3b"
+	// SystemPromptCanary goes in a launch profile's systemPrompt: firm and personal text that must never reach a
+	// command line or a log.
+	SystemPromptCanary = "SYSTEM_PROMPT_CANARY_4e"
 )
+
+// LaunchProfileFixtures returns the shared valid launch profile fixtures (internal/protocol/testdata, copied from
+// Firmary), by name, as JSON text.
+func LaunchProfileFixtures(t *testing.T) map[string]string {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(0)
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "protocol", "testdata", "launch-profile.fixtures.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Valid []struct {
+			Name     string
+			Document json.RawMessage
+		}
+	}
+	if err := json.Unmarshal(b, &f); err != nil || len(f.Valid) == 0 {
+		t.Fatalf("launch profile fixtures: %v", err)
+	}
+	out := map[string]string{}
+	for _, v := range f.Valid {
+		out[v.Name] = string(v.Document)
+	}
+	return out
+}
 
 // Release is a fake Anthropic release bucket for one version and platform.
 type Release struct {
