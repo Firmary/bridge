@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/protocol"
 	"github.com/Firmary/bridge/internal/testkit"
 )
@@ -129,14 +130,16 @@ func TestEnvironmentScrub(t *testing.T) {
 	}
 	// PWD and SHLVL are set by the shell running the fake itself.
 	allowedSeen := []string{"PATH", "HOME", "LANG", "LC_ALL", "https_proxy", "CLAUDE_CONFIG_DIR", "DISABLE_UPDATES",
-		"DISABLE_AUTOUPDATER", "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS", "CLAUDE_CODE_MAX_OUTPUT_TOKENS", "PWD", "SHLVL", "OLDPWD", "_"}
+		"DISABLE_AUTOUPDATER", "CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS", "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+		"CLAUDE_CODE_MAX_OUTPUT_TOKENS", "PWD", "SHLVL", "OLDPWD", "_"}
 	for k := range got {
 		if !slices.Contains(allowedSeen, k) {
 			t.Errorf("unexpected variable reached claude: %s", k)
 		}
 	}
 	if got["CLAUDE_CONFIG_DIR"] != filepath.Join(prof.Dir, "config") || got["DISABLE_UPDATES"] != "1" || got["CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS"] != "1" ||
-		got["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] != "1000" || got["PATH"] != "/usr/bin:/bin" {
+		got["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] != "1" || got["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] != "1000" ||
+		got["PATH"] != "/usr/bin:/bin" {
 		t.Errorf("helper settings wrong: %v", got)
 	}
 
@@ -144,7 +147,18 @@ func TestEnvironmentScrub(t *testing.T) {
 	if strings.Contains(string(args), testkit.PromptCanary) || strings.Contains(string(args), testkit.ContextCanary) {
 		t.Error("prompt or context passed on the command line")
 	}
-	for _, want := range []string{"[--tools]\n[]\n", "[--strict-mcp-config]", "[--setting-sources]\n[]\n", "[--disable-slash-commands]", "[--no-session-persistence]"} {
+	// The system prompt goes in a 0600 file in the profile, never on the command line.
+	if strings.Contains(string(args), strings.TrimSpace(prompt.Default)) || strings.Contains(string(args), "[--system-prompt]") {
+		t.Error("system prompt passed on the command line")
+	}
+	promptFile := filepath.Join(prof.Dir, "firmary-system-prompt.md")
+	if b, _ := os.ReadFile(promptFile); string(b) != prompt.Default {
+		t.Errorf("system prompt file holds %q", b)
+	}
+	if fi, err := os.Stat(promptFile); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("system prompt file mode: %v %v", fi, err)
+	}
+	for _, want := range []string{"[--system-prompt-file]\n[" + promptFile + "]\n", "[--tools]\n[]\n", "[--strict-mcp-config]", "[--setting-sources]\n[]\n", "[--disable-slash-commands]", "[--no-session-persistence]"} {
 		if !strings.Contains(string(args), want) {
 			t.Errorf("missing %q in args:\n%s", want, args)
 		}
