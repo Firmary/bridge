@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/launch"
 	"github.com/Firmary/bridge/internal/logx"
 	"github.com/Firmary/bridge/internal/pairing"
 	"github.com/Firmary/bridge/internal/protocol"
@@ -67,6 +68,7 @@ func (h *Helper) Hello(ctx context.Context, rec pairing.Record) protocol.Hello {
 		}},
 		// Consent screens arrive with the setup slice; until then nothing beyond revision 0 is accepted.
 		AcceptedConsentRevision: 0,
+		Launch:                  launch.Capabilities(),
 	}
 }
 
@@ -89,79 +91,104 @@ func (h *Helper) Cancel(turnID string) {
 	}
 }
 
-// check returns ("", "") if the turn may run, else an error class and a reason code.
-func (h *Helper) check(ctx context.Context, rec pairing.Record, t protocol.Turn) (ticket.Claims, driver.ProviderStatus, string, string) {
-	var st driver.ProviderStatus
+// checkTurn returns ("", "") and the turn's launch profile if its ticket and profile allow it to run, else an error
+// class and a reason code. It doesn't touch the provider.
+func (h *Helper) checkTurn(rec pairing.Record, t protocol.Turn) (ticket.Claims, launch.Profile, string, string) {
+	var lp launch.Profile
 	c, err := h.Verifier.Verify(t.Ticket)
 	if err != nil {
 		reason := "ticket_invalid"
 		if r, ok := err.(ticket.Reason); ok {
 			reason = string(r)
 		}
-		return c, st, protocol.ClassPolicy, reason
+		return c, lp, protocol.ClassPolicy, reason
 	}
 	switch {
 	case c.TicketID != t.TurnID:
-		return c, st, protocol.ClassPolicy, "turn_id_mismatch"
+		return c, lp, protocol.ClassPolicy, "turn_id_mismatch"
 	case c.DeviceID != rec.DeviceID:
-		return c, st, protocol.ClassPolicy, "not_this_device"
+		return c, lp, protocol.ClassPolicy, "not_this_device"
 	case c.UserID != rec.UserID:
-		return c, st, protocol.ClassPolicy, "not_paired_user"
+		return c, lp, protocol.ClassPolicy, "not_paired_user"
 	case c.FirmID != rec.FirmID:
-		return c, st, protocol.ClassPolicy, "not_paired_firm"
+		return c, lp, protocol.ClassPolicy, "not_paired_firm"
 	case c.Adapter != AdapterID:
-		return c, st, protocol.ClassPolicy, "adapter_mismatch"
+		return c, lp, protocol.ClassPolicy, "adapter_mismatch"
 	case t.Schema != nil && *t.Schema == "":
 		// An empty schema would hash like an absent one.
-		return c, st, protocol.ClassPolicy, "schema_empty"
+		return c, lp, protocol.ClassPolicy, "schema_empty"
 	case t.PromptHash() != c.PromptHash:
-		return c, st, protocol.ClassPolicy, "prompt_hash_mismatch"
+		return c, lp, protocol.ClassPolicy, "prompt_hash_mismatch"
 	case t.Schema != nil:
-		return c, st, protocol.ClassPolicy, "schema_unsupported"
+		return c, lp, protocol.ClassPolicy, "schema_unsupported"
+	case t.Profile == "":
+		// Required: the ticket's profileHash binds a profile the relay must forward.
+		return c, lp, protocol.ClassPolicy, string(launch.ReasonInvalid)
+	case protocol.ProfileHash(t.Profile) != c.ProfileHash:
+		return c, lp, protocol.ClassPolicy, "profile_hash_mismatch"
 	case c.Trigger.Kind != "interactive":
 		// Personal schedules need the per-automation consent (G4), which arrives in a later slice.
-		return c, st, protocol.ClassPolicy, "trigger_unsupported"
+		return c, lp, protocol.ClassPolicy, "trigger_unsupported"
 	}
-	st, err = h.Driver.Status(ctx, h.Profile(rec))
+	// Only bytes the ticket signed are parsed. Anything outside the ceiling refuses the whole turn.
+	if lp, err = launch.Parse(t.Profile); err != nil {
+		reason := launch.ReasonInvalid
+		if r, ok := err.(launch.Reason); ok {
+			reason = r
+		}
+		return c, lp, protocol.ClassPolicy, string(reason)
+	}
+	return c, lp, "", ""
+}
+
+// checkProvider returns ("", "") if the profile's provider login may run the ticket's turn, else an error class and
+// a reason code. Call it only while holding the turn slot: Status may prepare the provider profile, which must not
+// happen under a running turn.
+func (h *Helper) checkProvider(ctx context.Context, rec pairing.Record, c ticket.Claims) (string, string) {
+	st, err := h.Driver.Status(ctx, h.Profile(rec))
 	switch {
 	case err != nil:
-		return c, st, protocol.ClassTransient, "status_failed"
+		return protocol.ClassTransient, "status_failed"
 	case st.Installed == "":
-		return c, st, protocol.ClassFatal, "provider_not_installed"
+		return protocol.ClassFatal, "provider_not_installed"
 	case st.Installed != c.Pin:
-		return c, st, protocol.ClassPolicy, "pin_mismatch"
+		return protocol.ClassPolicy, "pin_mismatch"
 	case !st.SignedIn:
-		return c, st, protocol.ClassAuth, "not_signed_in"
+		return protocol.ClassAuth, "not_signed_in"
 	case st.AccountType == "" || !slices.Contains(c.AccountTypes, st.AccountType):
-		return c, st, protocol.ClassPolicy, "account_type_not_allowed"
+		return protocol.ClassPolicy, "account_type_not_allowed"
 	case c.ProviderOrgIDs != nil && (st.OrgID == "" || !slices.Contains(c.ProviderOrgIDs, st.OrgID)):
 		// Present means "only these provider organisations"; an empty list allows none.
-		return c, st, protocol.ClassPolicy, "provider_org_not_allowed"
+		return protocol.ClassPolicy, "provider_org_not_allowed"
 	case c.ProviderOrgIDs == nil && slices.Contains(protocol.BusinessAccountTypes, st.AccountType):
 		// D7: a business plan runs firm work only in the firm's own organisation, so it needs the claim.
-		return c, st, protocol.ClassPolicy, "provider_org_not_allowed"
+		return protocol.ClassPolicy, "provider_org_not_allowed"
 	}
-	return c, st, "", ""
+	return "", ""
 }
 
 // HandleTurn checks and runs one turn. It always emits exactly one terminal event.
 func (h *Helper) HandleTurn(ctx context.Context, rec pairing.Record, t protocol.Turn, emit func(protocol.StreamEvent)) {
 	started := time.Now()
-	c, _, class, reason := h.check(ctx, rec, t)
-	if reason != "" {
+	reject := func(c ticket.Claims, class, reason string) {
 		h.Log.Log(logx.TurnRejected, logx.Fields{TicketID: c.TicketID, Provider: h.Driver.ID(), ErrorClass: class, Reason: reason})
 		emit(protocol.Error(class, reason))
+	}
+	c, lp, class, reason := h.checkTurn(rec, t)
+	if reason != "" {
+		reject(c, class, reason)
 		return
 	}
 
+	// The slot is taken before the provider is asked anything, so a turn that will be refused as busy never touches
+	// the provider profile of the turn that is running.
 	h.mu.Lock()
 	if h.running == nil {
 		h.running = map[string]context.CancelFunc{}
 	}
 	if len(h.running) >= MaxConcurrentTurns {
 		h.mu.Unlock()
-		h.Log.Log(logx.TurnRejected, logx.Fields{TicketID: c.TicketID, Provider: h.Driver.ID(), ErrorClass: protocol.ClassTransient, Reason: "busy"})
-		emit(protocol.Error(protocol.ClassTransient, "busy"))
+		reject(c, protocol.ClassTransient, "busy")
 		return
 	}
 	timeout := h.TurnTimeout
@@ -177,12 +204,16 @@ func (h *Helper) HandleTurn(ctx context.Context, rec pairing.Record, t protocol.
 		h.mu.Unlock()
 		cancel()
 	}()
+	if class, reason := h.checkProvider(rctx, rec, c); reason != "" {
+		reject(c, class, reason)
+		return
+	}
 
 	h.Log.Log(logx.TurnStart, logx.Fields{TicketID: c.TicketID, Provider: h.Driver.ID(), Model: c.Model, Version: c.Pin})
 	var done logx.Fields
 	var windows []logx.Window
 	err := h.Driver.Run(rctx, h.Profile(rec), driver.Turn{
-		ID: c.TicketID, Model: c.Model, Context: t.Context, Prompt: t.Prompt, MaxOutputTokens: c.MaxOutputTokens,
+		ID: c.TicketID, Model: c.Model, Context: t.Context, Prompt: t.Prompt, MaxOutputTokens: c.MaxOutputTokens, Launch: lp,
 	}, func(e protocol.StreamEvent) {
 		switch e.T {
 		case protocol.EvUsage:

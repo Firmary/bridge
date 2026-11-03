@@ -1,0 +1,208 @@
+{
+  "$comment": "Each valid document must parse. Each invalid document must fail, with an error at `path` (JSON Pointer). Synthetic values only. A `turn` carries the profile as JSON text bound by the ticket's `profileHash` (launch-profile.vectors.json); these are the parsed documents. The profile is strict: an unknown field, value or tool is refused, never dropped, and no field takes a raw flag, environment variable or config key. Effort mapping, the tool catalog's flags and the duplicate-tool rule are Helper checks, not schema checks. `path` is where the Zod parse reports the error; a JSON Schema validator may report a parent or union branch instead, so other implementations need only check pass or fail.",
+  "valid": [
+    {
+      "name": "built-in profile (version 0)",
+      "document": {
+        "schema": 1
+      }
+    },
+    {
+      "name": "Claude Code turn with web search",
+      "document": {
+        "schema": 1,
+        "systemPrompt": "<firmary_required>\nYou are Firmary's assistant.\n</firmary_required>\n<firm_instructions>\nUse UK spelling.\n</firm_instructions>",
+        "effort": "high",
+        "tools": ["web_search"],
+        "maxTurns": 4
+      }
+    },
+    {
+      "name": "Codex turn with knobs",
+      "document": {
+        "schema": 1,
+        "systemPrompt": "Answer briefly.",
+        "effort": "low",
+        "codex": {
+          "reasoningSummary": "concise",
+          "verbosity": "low"
+        }
+      }
+    },
+    {
+      "name": "bare: no prompt, no tools, low effort",
+      "document": {
+        "schema": 1,
+        "effort": "low",
+        "tools": []
+      }
+    },
+    {
+      "name": "empty Claude Code knobs",
+      "document": {
+        "schema": 1,
+        "effort": "max",
+        "claudeCode": {}
+      }
+    },
+    {
+      "name": "Codex turn keeping its built-in instructions",
+      "document": {
+        "schema": 1,
+        "systemPrompt": "Answer briefly.",
+        "codex": {
+          "replaceBuiltinInstructions": false
+        }
+      }
+    },
+    {
+      "name": "Claude Code turn keeping its built-in prompt",
+      "document": {
+        "schema": 1,
+        "systemPrompt": "Answer briefly.",
+        "claudeCode": {
+          "replaceBuiltinInstructions": false
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "missing schema version",
+      "path": "/schema",
+      "document": {
+        "systemPrompt": "Hello."
+      }
+    },
+    {
+      "name": "unknown schema version",
+      "path": "/schema",
+      "document": {
+        "schema": 2
+      }
+    },
+    {
+      "name": "unknown field (permission mode)",
+      "path": "",
+      "document": {
+        "schema": 1,
+        "permissionMode": "bypassPermissions"
+      }
+    },
+    {
+      "name": "environment variables",
+      "path": "",
+      "document": {
+        "schema": 1,
+        "env": {
+          "ANTHROPIC_BASE_URL": "https://attacker.example"
+        }
+      }
+    },
+    {
+      "name": "shell tool outside the catalog",
+      "path": "/tools/0",
+      "document": {
+        "schema": 1,
+        "tools": ["Bash"]
+      }
+    },
+    {
+      "name": "local web fetch outside the catalog",
+      "path": "/tools/0",
+      "document": {
+        "schema": 1,
+        "tools": ["web_fetch"]
+      }
+    },
+    {
+      "name": "tools as a comma-separated string",
+      "path": "/tools",
+      "document": {
+        "schema": 1,
+        "tools": "web_search"
+      }
+    },
+    {
+      "name": "unknown effort",
+      "path": "/effort",
+      "document": {
+        "schema": 1,
+        "effort": "extreme"
+      }
+    },
+    {
+      "name": "max turns above the ceiling",
+      "path": "/maxTurns",
+      "document": {
+        "schema": 1,
+        "tools": ["web_search"],
+        "maxTurns": 11
+      }
+    },
+    {
+      "name": "zero max turns",
+      "path": "/maxTurns",
+      "document": {
+        "schema": 1,
+        "maxTurns": 0
+      }
+    },
+    {
+      "name": "fractional max turns",
+      "path": "/maxTurns",
+      "document": {
+        "schema": 1,
+        "maxTurns": 2.5
+      }
+    },
+    {
+      "name": "empty system prompt",
+      "path": "/systemPrompt",
+      "document": {
+        "schema": 1,
+        "systemPrompt": ""
+      }
+    },
+    {
+      "name": "raw Codex config key",
+      "path": "/codex",
+      "document": {
+        "schema": 1,
+        "codex": {
+          "sandbox_mode": "danger-full-access"
+        }
+      }
+    },
+    {
+      "name": "raw Claude Code flag",
+      "path": "/claudeCode",
+      "document": {
+        "schema": 1,
+        "claudeCode": {
+          "allowedTools": "Bash"
+        }
+      }
+    },
+    {
+      "name": "unknown Codex verbosity",
+      "path": "/codex/verbosity",
+      "document": {
+        "schema": 1,
+        "codex": {
+          "verbosity": "maximal"
+        }
+      }
+    },
+    {
+      "name": "replace switch given as a string",
+      "path": "/codex/replaceBuiltinInstructions",
+      "document": {
+        "schema": 1,
+        "codex": {
+          "replaceBuiltinInstructions": "false"
+        }
+      }
+    }
+  ]
+}

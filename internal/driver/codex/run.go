@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/launch"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -23,12 +24,14 @@ const MaxOutputTokensCap = 128000
 
 // runArgs: non-interactive exec with JSONL events, the prompt read from stdin ("-"), and nothing that could act on
 // this computer or be saved. --strict-config makes an unknown key (a setting a new pin dropped) fail the run.
-func (d *Driver) runArgs(p driver.Profile, model string) []string {
+// The launch profile's settings come as -c flags too, except the prompt text, which is only in config.toml.
+func (d *Driver) runArgs(p driver.Profile, model string, l launch.Profile) []string {
 	args := []string{
 		"exec", "--json", "--strict-config", "--skip-git-repo-check", "--ephemeral", "--ignore-rules",
 		"--sandbox", "read-only", "--color", "never", "--model", model,
 	}
-	args = append(args, configArgs(d.profileSettings(p))...)
+	launchArgs, _ := d.launchSettings(p, l)
+	args = append(args, configArgs(launchArgs)...)
 	return append(args, "-")
 }
 
@@ -54,13 +57,17 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 	if t.MaxOutputTokens <= 0 || t.MaxOutputTokens > MaxOutputTokensCap {
 		return fail(protocol.ClassPolicy, "max_output_tokens_invalid")
 	}
-	if err := d.prepare(p); err != nil {
+	// Held until Codex exits (deferred), so no status, sign-in or sign-out rewrites this turn's prompt or config.
+	m := d.profileLock(p)
+	m.Lock()
+	defer m.Unlock()
+	if err := d.prepare(p, t.Launch); err != nil {
 		return fail(protocol.ClassFatal, "profile_unavailable")
 	}
 
 	rctx, stop := context.WithCancel(ctx)
 	defer stop()
-	cmd := d.command(rctx, bin, p, d.runArgs(p, t.Model)...)
+	cmd := d.command(rctx, bin, p, d.runArgs(p, t.Model, t.Launch)...)
 	cmd.Stdin = strings.NewReader(input(t))
 	// stderr is kept in memory, bounded, only to classify a failure. It is never logged or forwarded.
 	var stderr bytes.Buffer
@@ -73,7 +80,7 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 		return fail(protocol.ClassFatal, "spawn_failed")
 	}
 
-	st := streamState{model: t.Model}
+	st := streamState{model: t.Model, webSearch: t.Launch.HasTool(launch.ToolWebSearch)}
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64<<10), 16<<20)
 	for sc.Scan() {
@@ -120,6 +127,7 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 // streamState turns `codex exec --json` lines into stream events.
 type streamState struct {
 	model     string
+	webSearch bool // the launch profile turned web search on, so its items are expected
 	started   bool
 	threadID  string
 	completed bool
@@ -176,6 +184,9 @@ func (s *streamState) line(b []byte) []protocol.StreamEvent {
 		}
 	case "item.started", "item.updated", "item.completed":
 		if m.Item == nil {
+			return nil
+		}
+		if m.Item.Type == "web_search" && s.webSearch {
 			return nil
 		}
 		if toolItems[m.Item.Type] {

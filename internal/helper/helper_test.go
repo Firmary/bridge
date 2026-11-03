@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -57,6 +59,7 @@ type rig struct {
 	h                          *helper.Helper
 	log                        *logx.Logger
 	data, keyPath, pairingPath string
+	dump                       string
 	shown, paired              chan string
 	code                       string
 	hello                      protocol.Hello
@@ -106,7 +109,7 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	if configure != nil {
 		configure(h)
 	}
-	g := &rig{r: r, h: h, log: log, data: data, shown: make(chan string, 4), paired: make(chan string, 4), runDone: make(chan struct{}),
+	g := &rig{r: r, h: h, log: log, data: data, dump: dump, shown: make(chan string, 4), paired: make(chan string, 4), runDone: make(chan struct{}),
 		pairingPath: filepath.Join(data, "pairing.json"), keyPath: filepath.Join(data, "device.key")}
 	client, err := relay.New(relay.Config{URL: r.URL, Env: "local", KeyPath: g.keyPath, PairingPath: g.pairingPath,
 		HelperVersion: "0.0.0-test", Log: log, Handler: h, ShowPairingCode: func(c string) { g.shown <- c },
@@ -354,4 +357,117 @@ func TestDroppedConnectionCancelsTurn(t *testing.T) {
 	if d := time.Since(dropped); d > time.Second {
 		t.Fatalf("hello came %v after the drop; the running turn held the reconnect", d)
 	}
+}
+
+// TestLaunchProfile: hello declares the launch capabilities; a turn runs only with the profile its ticket signed, and
+// only if that profile is within the ceiling; a valid profile reaches the driver.
+func TestLaunchProfile(t *testing.T) {
+	g := startRig(t, nil)
+	r, dev := g.r, g.dev
+	if l := g.hello.Launch; l == nil || !slices.Equal(l.ProfileSchemas, []int{1}) || !slices.Equal(l.Tools, []string{"web_search"}) ||
+		!slices.Equal(l.ClaudeKnobs, []string{"replaceBuiltinInstructions"}) ||
+		!slices.Equal(l.CodexKnobs, []string{"reasoningSummary", "verbosity", "replaceBuiltinInstructions"}) {
+		t.Fatalf("hello launch %+v", g.hello.Launch)
+	}
+
+	// signed returns claims whose profileHash binds profile.
+	signed := func(profile string) ticket.Claims {
+		c := r.Claims(dev, pinVersion, "", testkit.PromptCanary)
+		c.ProfileHash = protocol.ProfileHash(profile)
+		return c
+	}
+	reject := func(name, want string, c ticket.Claims, profile string) {
+		t.Helper()
+		if err := r.SendTurnProfile(c, "", testkit.PromptCanary, profile); err != nil {
+			t.Fatal(err)
+		}
+		if evs := terminal(t, r, c.TicketID); len(evs) != 1 || evs[0].T != protocol.EvError || evs[0].Pattern != want ||
+			evs[0].Class != protocol.ClassPolicy {
+			t.Errorf("%s: got %+v, want policy error %s", name, evs, want)
+		}
+	}
+	webSearch := `{"schema":1,"systemPrompt":"` + testkit.SystemPromptCanary + `","tools":["web_search"]}`
+	// The relay swaps the signed profile for one that turns web search on, or drops it.
+	reject("tampered profile", "profile_hash_mismatch", r.Claims(dev, pinVersion, "", testkit.PromptCanary), webSearch)
+	reject("missing profile", "profile_invalid", r.Claims(dev, pinVersion, "", testkit.PromptCanary), "")
+	// A signed profile outside the ceiling is refused whole, never run with the bad part dropped.
+	for _, bad := range []string{`{"schema":1,"tools":["Bash"]}`, `{"schema":1,"tools":["web_fetch"]}`,
+		`{"schema":1,"env":{"ANTHROPIC_BASE_URL":"https://attacker.example"}}`, `{"schema":1,"permissionMode":"bypassPermissions"}`,
+		`{"schema":1,"claudeCode":{"allowedTools":"Bash"}}`, `{"schema":1,"Tools":["web_search"]}`, `not json`} {
+		reject("signed "+bad, "profile_invalid", signed(bad), bad)
+	}
+	reject("unknown schema", "profile_unsupported", signed(`{"schema":2}`), `{"schema":2}`)
+	noHash := r.Claims(dev, pinVersion, "", testkit.PromptCanary)
+	noHash.ProfileHash = ""
+	reject("ticket without profileHash", "ticket_missing_claims", noHash, fakerelay.BuiltInProfile)
+
+	// A signed profile within the ceiling runs, and its settings reach Claude Code.
+	c := signed(webSearch)
+	if err := r.SendTurnProfile(c, "", testkit.PromptCanary, webSearch); err != nil {
+		t.Fatal(err)
+	}
+	if evs := terminal(t, r, c.TicketID); evs[len(evs)-1].T != protocol.EvDone {
+		t.Fatalf("turn with a profile: %+v", evs)
+	}
+	g.stop()
+	args := testkit.ReadDir(t, g.dump)
+	if !strings.Contains(args, "[--tools]\n[WebSearch]\n") || strings.Contains(args, testkit.SystemPromptCanary) {
+		t.Errorf("claude args:\n%s", args)
+	}
+	written := testkit.ReadDir(t, filepath.Join(g.data, "logs"))
+	if strings.Contains(written, testkit.SystemPromptCanary) {
+		t.Error("the profile's system prompt was logged")
+	}
+	for _, reason := range []string{"profile_hash_mismatch", "profile_invalid", "profile_unsupported"} {
+		if !strings.Contains(written, `"reason":"`+reason+`"`) {
+			t.Errorf("log has no %s rejection", reason)
+		}
+	}
+}
+
+// countingDriver counts Status calls and signals when a turn starts running.
+type countingDriver struct {
+	driver.Driver
+	statuses atomic.Int32
+	running  chan struct{}
+}
+
+func (d *countingDriver) Status(ctx context.Context, p driver.Profile) (driver.ProviderStatus, error) {
+	d.statuses.Add(1)
+	return d.Driver.Status(ctx, p)
+}
+
+func (d *countingDriver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit func(protocol.StreamEvent)) error {
+	d.running <- struct{}{}
+	return d.Driver.Run(ctx, p, t, emit)
+}
+
+// TestBusyTurnNeverAsksProvider: a turn that arrives while another runs is refused as busy before the provider is
+// asked anything, so its status check can't rewrite the running turn's provider profile (review F1).
+func TestBusyTurnNeverAsksProvider(t *testing.T) {
+	var cd *countingDriver
+	g := startRig(t, func(h *helper.Helper) {
+		h.TurnTimeout = 2 * time.Second
+		cd = &countingDriver{Driver: h.Driver, running: make(chan struct{}, 4)}
+		h.Driver = cd
+	})
+	r := g.r
+	c := r.Claims(g.dev, pinVersion, "", testkit.SlowPrompt)
+	if err := r.SendTurn(c, "", testkit.SlowPrompt); err != nil {
+		t.Fatal(err)
+	}
+	recv(t, cd.running, "first turn running")
+	before := cd.statuses.Load()
+
+	c2 := r.Claims(g.dev, pinVersion, "", testkit.PromptCanary)
+	if err := r.SendTurn(c2, "", testkit.PromptCanary); err != nil {
+		t.Fatal(err)
+	}
+	if evs := terminal(t, r, c2.TicketID); len(evs) != 1 || evs[0].Pattern != "busy" {
+		t.Fatalf("second turn: %+v, want busy", evs)
+	}
+	if n := cd.statuses.Load(); n != before {
+		t.Fatalf("the busy turn asked the provider for its status (%d calls)", n-before)
+	}
+	terminal(t, r, c.TicketID) // the slow turn ends at its deadline
 }

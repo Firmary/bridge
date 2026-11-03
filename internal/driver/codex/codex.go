@@ -16,12 +16,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/driver/prompt"
+	"github.com/Firmary/bridge/internal/launch"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -37,13 +39,33 @@ type Driver struct {
 	environ      func() []string
 	managedPaths []string
 	// extraConfig and extraEnv are set only by in-package tests (to point a real binary at a recording stub API).
-	// extraConfig is appended after the Helper's own settings.
+	// extraConfig is added to the launch settings, before the Helper's fixed settings.
 	extraConfig []string
 	extraEnv    []string
 
 	mu      sync.Mutex
 	version string
 	binary  string
+
+	// locks holds one mutex per profile directory. A turn holds its profile's from writing its prompt and config
+	// until Codex exits, so nothing rewrites them under it (see prepareIdle).
+	locksMu sync.Mutex
+	locks   map[string]*sync.Mutex
+}
+
+// profileLock returns the mutex of profile p.
+func (d *Driver) profileLock(p driver.Profile) *sync.Mutex {
+	d.locksMu.Lock()
+	defer d.locksMu.Unlock()
+	if d.locks == nil {
+		d.locks = map[string]*sync.Mutex{}
+	}
+	m, ok := d.locks[p.Dir]
+	if !ok {
+		m = &sync.Mutex{}
+		d.locks[p.Dir] = m
+	}
+	return m
 }
 
 // Option configures a Driver. Options exist for tests; production uses the defaults.
@@ -139,30 +161,91 @@ func instructionsFile(p driver.Profile) string {
 	return filepath.Join(codexHome(p), "firmary-system-prompt.md")
 }
 
-// profileSettings are the settings that depend on the profile: Firmary's system prompt in place of Codex's built-in
-// instructions. This is the one place the Codex driver passes Firmary's prompt.
-func (d *Driver) profileSettings(p driver.Profile) []string {
-	return append([]string{`model_instructions_file=` + tomlString(instructionsFile(p))}, d.extraConfig...)
+// efforts maps each launch effort to Codex's model_reasoning_effort. Codex has no level above xhigh, so max is xhigh.
+var efforts = map[string]string{"low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": "xhigh"}
+
+// toolSettings maps each launch catalog tool to the Codex settings that turn it on, and noTools are the settings
+// for every catalog tool off. web_search is the only one: OpenAI runs the search; nothing runs on this computer.
+var (
+	toolSettings = map[string][]string{launch.ToolWebSearch: {`web_search="live"`}}
+	noTools      = []string{`web_search="disabled"`}
+)
+
+// launchSettings are the settings that depend on the profile and the turn's launch profile, each a key and value
+// from this package's own tables: Firmary's system prompt, effort, the catalog tools and the Codex knobs. The prompt
+// text itself is in fileOnly, settings for config.toml only, never the command line; args are safe to pass as -c
+// flags too. The fixed settings come after both and never share a key with them.
+func (d *Driver) launchSettings(p driver.Profile, l launch.Profile) (args, fileOnly []string) {
+	if l.Codex.KeepBuiltinInstructions {
+		fileOnly = []string{`developer_instructions=` + tomlString(systemPromptText(l))}
+	} else {
+		args = append(args, `model_instructions_file=`+tomlString(instructionsFile(p)))
+	}
+	if l.HasTool(launch.ToolWebSearch) {
+		args = append(args, toolSettings[launch.ToolWebSearch]...)
+	} else {
+		args = append(args, noTools...)
+	}
+	if e, ok := efforts[l.Effort]; ok {
+		args = append(args, `model_reasoning_effort=`+tomlString(e))
+	}
+	if slices.Contains(launch.CodexReasoningSummaries, l.Codex.ReasoningSummary) {
+		args = append(args, `model_reasoning_summary=`+tomlString(l.Codex.ReasoningSummary))
+	}
+	if slices.Contains(launch.CodexVerbosities, l.Codex.Verbosity) {
+		args = append(args, `model_verbosity=`+tomlString(l.Codex.Verbosity))
+	}
+	return append(args, d.extraConfig...), fileOnly
 }
 
-// prepare creates the profile and rewrites its config.toml and Firmary's system prompt file, so a change made by
-// Codex or anyone else doesn't survive to the next run. Global instruction files in CODEX_HOME are removed: Codex
-// sends them with every turn.
-func (d *Driver) prepare(p driver.Profile) error {
-	for _, dir := range []string{p.Dir, codexHome(p), workDir(p)} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return err
-		}
+// systemPromptText is the turn's system prompt: the launch profile's, else Firmary's built-in default for the
+// profile's tools.
+func systemPromptText(l launch.Profile) string {
+	if l.SystemPrompt != "" {
+		return l.SystemPrompt
+	}
+	return prompt.Fallback(l.HasTool(launch.ToolWebSearch))
+}
+
+// prepare creates the profile and rewrites its config.toml and Firmary's system prompt file for the launch profile,
+// so a change made by Codex or anyone else doesn't survive to the next run. Global instruction files in CODEX_HOME
+// are removed: Codex sends them with every turn.
+func (d *Driver) prepare(p driver.Profile, l launch.Profile) error {
+	if err := makeDirs(p); err != nil {
+		return err
 	}
 	for _, name := range []string{"AGENTS.md", "AGENTS.override.md"} {
 		if err := os.Remove(filepath.Join(codexHome(p), name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
-	if err := driver.WriteFileAtomic(instructionsFile(p), []byte(prompt.Default)); err != nil {
+	if err := driver.WriteFileAtomic(instructionsFile(p), []byte(systemPromptText(l))); err != nil {
 		return err
 	}
-	return driver.WriteFileAtomic(filepath.Join(codexHome(p), "config.toml"), []byte(configTOML(d.profileSettings(p))))
+	args, fileOnly := d.launchSettings(p, l)
+	return driver.WriteFileAtomic(filepath.Join(codexHome(p), "config.toml"), []byte(configTOML(append(args, fileOnly...))))
+}
+
+func makeDirs(p driver.Profile) error {
+	for _, dir := range []string{p.Dir, codexHome(p), workDir(p)} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// prepareIdle prepares the profile for a command other than a turn (status, sign-in, sign-out). While a turn holds
+// the profile, its prompt and config.toml are that turn's and are left alone: rewriting them before Codex has read
+// them would replace or drop the firm's prompt (review F1). They already carry the fixed settings, which these
+// commands also get as -c flags. It never waits for a turn, so hello and status don't stall behind one.
+func (d *Driver) prepareIdle(p driver.Profile) error {
+	m := d.profileLock(p)
+	if !m.TryLock() {
+		return makeDirs(p)
+	}
+	defer m.Unlock()
+	return d.prepare(p, launch.Profile{})
 }
 
 // command builds a Codex invocation in the profile: Helper settings both in config.toml and as -c session flags
@@ -176,9 +259,10 @@ func (d *Driver) command(ctx context.Context, bin string, p driver.Profile, args
 	return cmd
 }
 
-// withConfig puts the -c flags for the Helper's settings after a subcommand.
+// withConfig puts the -c flags for the Helper's settings, with the built-in launch profile, after a subcommand.
 func (d *Driver) withConfig(p driver.Profile, sub ...string) []string {
-	return append(sub, configArgs(d.profileSettings(p))...)
+	args, _ := d.launchSettings(p, launch.Profile{})
+	return append(sub, configArgs(args)...)
 }
 
 // authFile is the subset of CODEX_HOME/auth.json the Helper reads. Tokens are never kept: only the id_token's
@@ -247,7 +331,7 @@ func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderS
 	if bin == "" {
 		return driver.ProviderStatus{Managed: managed}, nil
 	}
-	if err := d.prepare(p); err != nil {
+	if err := d.prepareIdle(p); err != nil {
 		return st, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -352,7 +436,7 @@ func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, step
 	default:
 		return &driver.Failure{Class: protocol.ClassPolicy, Pattern: "signin_kind_invalid"}
 	}
-	if err := d.prepare(p); err != nil {
+	if err := d.prepareIdle(p); err != nil {
 		return &driver.Failure{Class: protocol.ClassFatal, Pattern: "profile_unavailable"}
 	}
 	ctx, cancel := context.WithTimeout(ctx, SignInTimeout)
@@ -384,7 +468,7 @@ func (d *Driver) SignOut(ctx context.Context, p driver.Profile) error {
 	if bin == "" {
 		return errors.New("provider not installed")
 	}
-	if err := d.prepare(p); err != nil {
+	if err := d.prepareIdle(p); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)

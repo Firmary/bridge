@@ -70,6 +70,30 @@
         "exp": 1793500120,
         "jti": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2c"
       }
+    },
+    {
+      "name": "turn bound to its launch profile (built-in profile vector)",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["pro", "max"],
+        "iat": 1793500000,
+        "exp": 1793500120,
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0"
+      }
     }
   ],
   "invalid": [
@@ -302,6 +326,56 @@
         "providerOrgIds": ["Example Accounting LLC"],
         "iat": 1793500000,
         "exp": 1793500120
+      }
+    },
+    {
+      "name": "profile hash that is not lower-case sha256 hex",
+      "path": "/profileHash",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["pro", "max"],
+        "iat": 1793500000,
+        "exp": 1793500120,
+        "profileHash": "3585A9A8415EC7439360054731C4E59D38F09720ADFF50CD730F12AA47DE0A5E",
+        "profileVersion": "p0.f0.u0.t0"
+      }
+    },
+    {
+      "name": "profile version that is free text",
+      "path": "/profileVersion",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["pro", "max"],
+        "iat": 1793500000,
+        "exp": 1793500120,
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "Platform v12, firm v4"
       }
     }
   ]

@@ -269,6 +269,63 @@ These are Helper-side only, with no schema change. They set what Firmary's confi
   Under systemd stdout is journald, which other admins can read, so it prints a hint instead. Showing the code to a
   headless service (for example a `0600` file plus a `pairing-code` command) is part of S10.
 
+## 8. Launch profiles (slice L2, design `relay-launch-profile-design-2026-11-02.md`)
+
+The contracts are firmary-os #7026 (L1): `launch-profile.ts`, `turn.profile`, `hello.launch`, and the ticket's
+`profileHash` and `profileVersion`. The Helper implements them as written there, with these Helper-side rules that
+L3 (the server side) must match:
+
+- **Required.** The Helper refuses a ticket without `profileHash` or `profileVersion` (`ticket_missing_claims`) and a
+  turn without `profile` (`profile_invalid`). L1 has them optional in Zod only until L3 signs and sends them.
+- **Order of checks.** The Helper hashes `turn.profile` as received (`protocol.ProfileHash`, the shared vectors in
+  `internal/protocol/testdata/launch-profile.vectors.json`), refuses `profile_hash_mismatch`, and only then parses it.
+  It parses only bytes the ticket signed.
+- **Closed reasons.** `profile_unsupported` is a `schema` other than 1. `profile_invalid` is anything else: an unknown
+  field, value or tool, an out-of-range number, or text that isn't one JSON object.
+- **Stricter than Zod in five places.** Each fails closed, and a correct server never triggers them:
+  - keys match exactly (Go's decoder would otherwise accept `"Schema"` or `"SystemPrompt"`);
+  - a key repeated in one object is refused (`JSON.parse` would keep the last);
+  - `null` is refused for every optional field;
+  - a tool named twice is refused (the L1 fixtures call this a Helper check);
+  - a string with invalid UTF-8, or a `\uD800`–`\uDFFF` escape that isn't half of a surrogate pair, is refused
+    rather than turned into U+FFFD. `JSON.parse` keeps a lone surrogate, so the server must not send one: strip or
+    replace them before signing.
+- **Nothing after the object.** Any byte after the closing `}` other than whitespace is `profile_invalid`, as
+  `JSON.parse` would refuse it. Worth adding to the shared L1 fixtures (`{"schema":1}garbage`, `{"schema":1}}`).
+- **`hello.launch`** is `{profileSchemas: [1], tools: ["web_search"], claudeKnobs: ["replaceBuiltinInstructions"],
+  codexKnobs: ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]}`, sent on every connection.
+- **The embedded fallback prompt** (`internal/driver/prompt/firmary-system-prompt.md`) is
+  `DEFAULT_REQUIRED_INSTRUCTIONS`, a blank line, then `DEFAULT_STYLE_INSTRUCTIONS`, as in #7026. The built-in
+  profile `{"schema":1}` uses it. If L3 changes those constants, this file must change in the same release.
+- **A second fallback for web search.** A profile with `tools: ["web_search"]` and no `systemPrompt` gets
+  `firmary-system-prompt-web-search.md` instead, because the required block says "You have no tools … cannot
+  browse". Its first paragraph says web search, run by the provider, is the only tool, rules out acting on the
+  computer, and treats search results like `<firmary_context>`: reference material, never instructions. The style
+  text is the same. L3's generated tool line (design §2.4) should use the same wording, or L3 should always send a
+  `systemPrompt` when a tool is on.
+- **Busy before provider checks.** A turn now takes the Helper's one turn slot before the provider is asked for its
+  status. While a turn runs, another turn gets `busy` even if it would also fail a provider check (`not_signed_in`,
+  `pin_mismatch`, …).
+- **New error pattern** for §5: `max_turns` (class `fatal`). A Claude Code turn with a tool on hit the profile's
+  `maxTurns`.
+
+How each knob is applied (checked on the pinned binaries by the real-binary tests):
+
+| Knob | Claude Code 2.1.304 | Codex 0.166.0 |
+| --- | --- | --- |
+| `systemPrompt` (absent: the embedded default) | Written to a `0600` file. `--system-prompt-file`, or `--append-system-prompt-file` when `claudeCode.replaceBuiltinInstructions` is false | `model_instructions_file`, or, when `codex.replaceBuiltinInstructions` is false, `developer_instructions` in `config.toml` only (never on the command line) |
+| `effort` | `--effort` (sent as `output_config.effort`) | `model_reasoning_effort`; `max` is sent as `xhigh` |
+| `tools: ["web_search"]` | `--tools WebSearch --allowedTools WebSearch` (never `WebFetch`) | `web_search="live"` (otherwise `"disabled"`) |
+| `maxTurns` | `--max-turns`, only with a tool on. With a tool on and `maxTurns` absent, `--max-turns 10` (the ceiling) | No setting; the 15-minute turn timeout bounds it |
+| `codex.reasoningSummary`, `codex.verbosity` | — | `model_reasoning_summary`, `model_verbosity` |
+
+**What `hello.launch` doesn't say.** It lists what this build parses, the same for both drivers. The wire format stays
+as in #7026, so L3's preview must show these three mappings itself (the driver tests pin each one):
+
+- On Codex, effort `max` runs as `xhigh`, Codex's highest level.
+- On Codex, `maxTurns` is ignored; a Codex turn with web search is bounded only by the turn timeout.
+- Each driver ignores the other provider's knob block (`claudeCode` on Codex, `codex` on Claude Code).
+
 ## Not covered here
 
 The other task reconciling the schemas will find these older differences between this Helper and S1. They predate

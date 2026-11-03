@@ -21,6 +21,8 @@ var patterns = []struct {
 	{protocol.ClassAuth, "token_expired_or_revoked", regexp.MustCompile(`(?i)token.*(expired|revoked)`)},
 	{protocol.ClassAuth, "unauthorized", regexp.MustCompile(`(?i)unauthori[sz]ed|\b401\b`)},
 	{protocol.ClassAuth, "authentication", regexp.MustCompile(`(?i)authentication`)},
+	// The turn used up the launch profile's maxTurns (result subtype error_max_turns).
+	{protocol.ClassFatal, "max_turns", regexp.MustCompile(`error_max_turns`)},
 	{protocol.ClassRateLimit, "rate_limit", regexp.MustCompile(`(?i)rate.?limit|usage limit|\b429\b|limit reached`)},
 	{protocol.ClassTransient, "overloaded", regexp.MustCompile(`(?i)overloaded|\b529\b`)},
 	{protocol.ClassTransient, "transient", regexp.MustCompile(`(?i)\b5\d\d\b|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|timeout|api_error`)},
