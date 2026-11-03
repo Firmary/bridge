@@ -1,8 +1,10 @@
-// Package driver defines what the Helper needs from a provider app (Claude Code now, Codex later).
+// Package driver defines what the Helper needs from a provider app (Claude Code, Codex).
 package driver
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 
 	"github.com/Firmary/bridge/internal/protocol"
 )
@@ -12,6 +14,9 @@ import (
 type Pin struct {
 	Version string
 	SHA256  map[string]string
+	// ArchiveSHA256 is, for a provider that ships its binary inside an archive (Codex), the SHA-256 of that release
+	// archive per platform, as the provider publishes it. Both it and SHA256 must match.
+	ArchiveSHA256 map[string]string
 }
 
 // Profile is one Firmary user's provider profile on this device. Dir is owned by the Helper; the user's own
@@ -47,7 +52,7 @@ type Failure struct {
 
 func (f *Failure) Error() string { return f.Class + ": " + f.Pattern }
 
-// Driver is one provider app. SignIn and SignOut arrive in a later slice.
+// Driver is one provider app.
 type Driver interface {
 	ID() string
 	// Ensure installs and verifies the pinned copy. It is idempotent.
@@ -57,4 +62,47 @@ type Driver interface {
 	// Run runs one turn, emitting events. It always ends by emitting exactly one done or error event, and returns
 	// a *Failure matching the error event, or nil after done.
 	Run(ctx context.Context, p Profile, t Turn, emit func(protocol.StreamEvent)) error
+}
+
+// Sign-in kinds, as in the relay's signin_step message.
+const (
+	SignInBrowser    = "browser"
+	SignInDeviceLink = "device_link"
+)
+
+// SignInStep is what the person needs to finish a provider's own sign-in: the provider's link and, for a device
+// link, its one-time code. It is shown to that person only and never logged.
+type SignInStep struct {
+	Kind     string
+	URL      string
+	UserCode string
+}
+
+// SignInDriver is a Driver that can run the provider's own sign-in in a profile (Codex now; Claude Code in a later
+// slice). SignIn blocks until the sign-in finishes, fails, or ctx ends, calling step once the link is known.
+type SignInDriver interface {
+	Driver
+	SignIn(ctx context.Context, p Profile, kind string, step func(SignInStep)) error
+	SignOut(ctx context.Context, p Profile) error
+}
+
+// WriteFileAtomic replaces path with b, mode 0600, through a temporary file in the same directory, so a reader
+// never sees a partial file and a link planted at path is replaced rather than followed.
+func WriteFileAtomic(path string, b []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }

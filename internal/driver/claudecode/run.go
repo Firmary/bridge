@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -25,14 +27,34 @@ var ModelRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._:\[\]-]{0,99}$`)
 // MaxOutputTokensCap bounds the ticket's maxOutputTokens.
 const MaxOutputTokensCap = 128000
 
-// runArgs: print mode with streamed JSON, and nothing that could act on this computer. No tools, no MCP servers,
-// no settings files (user, project or local), no slash commands or skills, nothing saved to resume.
-func runArgs(model string) []string {
-	return []string{
+// runArgs: print mode with streamed JSON, Firmary's system prompt, and nothing that could act on this computer. No
+// tools, no MCP servers, no settings files (user, project or local), no slash commands or skills, nothing saved to
+// resume.
+func runArgs(p driver.Profile, model string) []string {
+	args := []string{
 		"-p", "--input-format", "text", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 		"--tools", "", "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands",
 		"--no-session-persistence", "--permission-mode", "default", "--model", model,
 	}
+	return append(args, systemPromptArgs(p)...)
+}
+
+// systemPromptFile is where the turn's system prompt is written for --system-prompt-file.
+func systemPromptFile(p driver.Profile) string {
+	return filepath.Join(p.Dir, "firmary-system-prompt.md")
+}
+
+// writeSystemPrompt writes the turn's resolved system prompt to the profile (0600, rewritten every turn). It goes
+// in a file, never on the command line: once firm and personal instructions arrive it is user data, and other local
+// users can read the process list.
+func writeSystemPrompt(p driver.Profile, text string) error {
+	return driver.WriteFileAtomic(systemPromptFile(p), []byte(text))
+}
+
+// systemPromptArgs is the one place the Claude Code driver passes Firmary's system prompt. --system-prompt-file
+// replaces Claude Code's built-in prompt.
+func systemPromptArgs(p driver.Profile) []string {
+	return []string{"--system-prompt-file", systemPromptFile(p)}
 }
 
 // input is the text written to Claude Code's stdin. The prompt never goes on the command line, where other local
@@ -61,8 +83,12 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 	if err := prepare(p); err != nil {
 		return fail(protocol.ClassFatal, "profile_unavailable")
 	}
+	// The launch profile's prompt replaces prompt.Default here once turns carry one.
+	if err := writeSystemPrompt(p, prompt.Default); err != nil {
+		return fail(protocol.ClassFatal, "profile_unavailable")
+	}
 
-	cmd := exec.CommandContext(ctx, bin, runArgs(t.Model)...)
+	cmd := exec.CommandContext(ctx, bin, runArgs(p, t.Model)...)
 	cmd.Dir = workDir(p)
 	set := map[string]string{"CLAUDE_CODE_MAX_OUTPUT_TOKENS": strconv.Itoa(t.MaxOutputTokens)}
 	for k, v := range d.extraEnv {
