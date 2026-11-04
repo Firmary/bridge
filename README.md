@@ -8,7 +8,27 @@ answer back.
 People see it as the **Firmary Helper**. That name is not final: it lives in one constant,
 [`internal/brand/brand.go`](internal/brand/brand.go), and a test fails if any other Go file spells it out.
 
-Status: **first slice, not released, not signed, not for use yet.**
+## Status
+
+**Beta, unsigned pre-release.** Builds for macOS, Windows and Linux are published as GitHub pre-releases (see
+below). They are not signed: macOS Gatekeeper and Windows SmartScreen will warn before they run. A signed build is
+coming.
+
+**Pairing in Firmary is not open yet.** The relay's public listener stays closed until Firmary's pairing screen
+ships, so a beta build is ready to connect but cannot pair until then.
+
+## Download (beta)
+
+Take the archive for your computer and `SHA256SUMS` from the latest pre-release on the
+[Releases](https://github.com/Firmary/bridge/releases) page, check it (`sha256sum -c SHA256SUMS --ignore-missing`;
+on macOS `shasum -a 256 -c SHA256SUMS --ignore-missing`), extract it, and run `./firmary-helper run` in a terminal
+in the extracted folder.
+
+- **macOS**: Gatekeeper warns because the build is unsigned. Run `xattr -d com.apple.quarantine ./firmary-helper`,
+  or right-click `firmary-helper` in Finder and choose **Open**.
+- **Windows**: SmartScreen warns because the build is unsigned. Click **More info → Run anyway**.
+
+A `v*` tag builds and publishes the pre-release (`.github/workflows/release.yml`, GitHub-hosted runner only).
 
 ## Where this comes from
 
@@ -36,8 +56,13 @@ Status: **first slice, not released, not signed, not for use yet.**
 - **Pairing by code match.** The Helper commits to a random value, the relay sends its own, the Helper reveals its
   value, and both sides derive the same `ABCD-EFGH` code. Firmary shows that code beside the computer that asked;
   the person pairs there only if it matches the Helper's. Nobody types or pastes the code, and no code is ever on a
-  command line. It is new on every connection. The Helper prints it only to a terminal, never to a service log,
-  then prints the person and firm it paired to.
+  command line. It is new on every connection. The Helper prints it only to a terminal, never to a service log.
+- **Accept on the computer.** Confirming the code in Firmary doesn't pair by itself: the relay then offers the
+  binding, the Helper names the person, their email and the firm, and pairs only when someone types `yes` in its
+  terminal. Anything else sends `pairing_decline` (Firmary revokes the binding) and the Helper starts over with a
+  new key. With no terminal on stdin (a service) it neither accepts nor declines: it waits, the relay withdraws the
+  offer after its timeout and offers it again on the next connection, and until it is accepted the computer gets no
+  turns. The Helper then prints the person and firm it paired to.
 - **One outgoing connection.** A `wss://` WebSocket to the relay with reconnect and backoff, plus `hello`. Nothing
   listens on the computer and no ports are opened.
 - **Its own pinned Claude Code.** The Helper installs its own copy from Anthropic's release bucket and checks it
@@ -65,7 +90,7 @@ Status: **first slice, not released, not signed, not for use yet.**
 | Design piece                                                   | Where it lands                       |
 | -------------------------------------------------------------- | ------------------------------------ |
 | Firmary's relay, pairing API and ticket signer                 | firmary-os S3 (here: fake relay)     |
-| Real relay addresses and ticket keys                           | S3; with no pinned key every turn is refused |
+| Dev ticket keys (prod's current and next are pinned)           | With no pinned key every dev turn is refused |
 | Codex in the Helper: `helper-codex` adapter, signin/signout over the relay | S9 follow-up (driver is built) |
 | Codex limit windows (percent used); `exec --json` reports none | Needs `codex app-server`, legal sign-off |
 | Claude Code sign-in from the Helper, test request, usage bars  | S9/S10 and firmary-os S11            |
