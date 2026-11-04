@@ -22,7 +22,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
-// Canaries appear in every input the Helper must never log. Tests assert none of them reaches a log file.
+// Canaries appear in every input the Link must never log. Tests assert none of them reaches a log file.
 const (
 	PromptCanary  = "PROMPT_CANARY_7f3a"
 	ContextCanary = "CONTEXT_CANARY_91bd"

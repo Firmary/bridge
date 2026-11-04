@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// passthrough is the allowlist of inherited environment variables. Everything else in the Helper's environment
+// passthrough is the allowlist of inherited environment variables. Everything else in the Link's environment
 // (API keys, OAuth tokens, base-URL and Bedrock/Vertex/gateway switches, cloud credentials, the user's own
 // CLAUDE_CONFIG_DIR, ...) is dropped, so the pinned Claude Code can only use the plan signed in to its profile.
 var passthrough = map[string]bool{
@@ -33,7 +33,7 @@ func allowed(key string) bool {
 	return passthrough[key] || strings.HasPrefix(key, "LC_")
 }
 
-// Env builds the child environment: allowlisted inherited variables, then the Helper's own fixed settings. set is
+// Env builds the child environment: allowlisted inherited variables, then the Link's own fixed settings. set is
 // supplied by this package only, never from relay input.
 func Env(inherited []string, configDir string, set map[string]string) []string {
 	env := map[string]string{}

@@ -1,11 +1,16 @@
 name: release
 
-# A v* tag builds the Helper for every desktop and publishes it as an unsigned GitHub pre-release. Signing (Apple
-# Developer ID and notarization, Azure Trusted Signing) comes later; until then every release is a pre-release.
+# A vX.Y.Z tag (plain semver, 0.2.0 or later) builds Firmary Link for macOS, Windows and Linux and publishes it as the
+# latest GitHub release: a beta, unsigned (ad-hoc signed on macOS; no Developer ID, notarization or Authenticode yet).
+# Installed copies update themselves from the release's signed manifest.json. The weekly schedule and a manual run
+# only re-sign the latest release's manifest with a fresh expiry, so copies keep trusting it between releases.
 
 on:
   push:
     tags: ["v*"]
+  schedule:
+    - cron: "23 7 * * 1" # Mondays, 07:23 UTC
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,50 +20,221 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  check:
+    if: github.event_name == 'push'
     # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: write # create the release and upload its assets; nothing else
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
+      - name: Check the tag
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Plain release semver only: no pre-release or build suffix, no leading zeros.
+          if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$ ]]; then
+            echo "::error::$TAG is not a release tag; use vX.Y.Z, e.g. v0.2.0"
+            exit 1
+          fi
+          major=${BASH_REMATCH[1]} minor=${BASH_REMATCH[2]}
+          if [ "$major" -eq 0 ] && [ "$minor" -lt 2 ]; then
+            echo "::error::$TAG is below v0.2.0, the first Firmary Link release"
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: false # a release build doesn't reuse a cache another run wrote
       - run: go vet ./...
       - run: go test ./...
-      - name: Build and package
-        env:
-          TAG: ${{ github.ref_name }}
+
+  build-macos:
+    needs: check
+    # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      MACOSX_DEPLOYMENT_TARGET: "11.0" # matches LSMinimumSystemVersion in Info.plist
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build the universal binary
         run: |
           set -euo pipefail
-          version="${TAG#v}"
-          # The relay accepts only this form (firmary-os VERSION_PATTERN).
-          [[ "$version" =~ ^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.-]{1,64})?$ ]] || { echo "bad tag $TAG"; exit 1; }
           mkdir -p build dist
-          for target in darwin/arm64 darwin/amd64 windows/amd64 windows/arm64 linux/amd64 linux/arm64; do
-            goos=${target%/*} goarch=${target#*/}
-            name="firmary-helper_${version}_${goos}_${goarch}"
-            exe=firmary-helper
-            [ "$goos" = windows ] && exe=firmary-helper.exe
-            mkdir -p "build/$name"
-            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -trimpath -ldflags "-s -w -X main.version=$version" \
-              -o "build/$name/$exe" ./cmd/firmary-helper
-            cp LICENSE NOTICE "build/$name/"
-            if [ "$goos" = windows ]; then
-              (cd build && zip -qr "../dist/$name.zip" "$name")
-            else
-              tar -C build --owner=0 --group=0 --numeric-owner -czf "dist/$name.tar.gz" "$name"
-            fi
+          ldflags="-s -w -X main.version=$VERSION"
+          # The tray needs cgo, so each architecture is built natively by clang and then joined.
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
+            go build -trimpath -ldflags "$ldflags" -o build/firmary-link-arm64 ./cmd/firmary-link
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 CC="clang -arch x86_64" \
+            go build -trimpath -ldflags "$ldflags" -o build/firmary-link-amd64 ./cmd/firmary-link
+          lipo -create -output dist/firmary-link-darwin-universal build/firmary-link-arm64 build/firmary-link-amd64
+          lipo -verify_arch dist/firmary-link-darwin-universal arm64 x86_64
+          # Ad-hoc only: this is the raw binary the updater installs.
+          codesign --force --sign - --identifier app.firmary.link dist/firmary-link-darwin-universal
+          codesign --verify --verbose=2 dist/firmary-link-darwin-universal
+      - name: Build Firmary Link.app and the dmg
+        run: packaging/macos/build-dmg.sh "$VERSION" dist/firmary-link-darwin-universal dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos
+          path: |
+            dist/firmary-link-darwin-universal
+            dist/Firmary-Link.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  build-other:
+    needs: check
+    # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install NSIS
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends nsis
+      - name: Build Linux and Windows
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ldflags="-s -w -X main.version=$VERSION"
+          for pair in amd64:x64 arm64:arm64; do
+            goarch=${pair%:*} name=${pair#*:}
+            CGO_ENABLED=0 GOOS=linux GOARCH=$goarch \
+              go build -trimpath -ldflags "$ldflags" -o "dist/firmary-link-linux-$name" ./cmd/firmary-link
+            # windowsgui: no console window behind the tray app.
+            CGO_ENABLED=0 GOOS=windows GOARCH=$goarch \
+              go build -trimpath -ldflags "$ldflags -H windowsgui" -o "dist/firmary-link-windows-$name.exe" ./cmd/firmary-link
+            packaging/linux/build-tarball.sh "$name" "dist/firmary-link-linux-$name" dist
+            packaging/linux/build-deb.sh "$VERSION" "$goarch" "dist/firmary-link-linux-$name" dist
           done
-          (cd dist && sha256sum -- * > SHA256SUMS)
-          cat dist/SHA256SUMS
-      - name: Publish the pre-release
+      - name: Build the Windows installer
+        run: |
+          makensis -V2 -WX -DVERSION="$VERSION" \
+            -DX64_EXE="$PWD/dist/firmary-link-windows-x64.exe" -DARM64_EXE="$PWD/dist/firmary-link-windows-arm64.exe" \
+            -DOUTFILE="$PWD/dist/Firmary-Link-Setup.exe" packaging/windows/installer.nsi
+      - run: cp packaging/install.sh dist/install.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: other
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [check, build-macos, build-other]
+    # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write # create the release and upload its assets; nothing else
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Check every asset is there
+        run: |
+          set -euo pipefail
+          for f in Firmary-Link.dmg Firmary-Link-Setup.exe install.sh \
+            "firmary-link_${VERSION}_amd64.deb" "firmary-link_${VERSION}_arm64.deb" \
+            firmary-link-linux-x64.tar.gz firmary-link-linux-arm64.tar.gz \
+            firmary-link-darwin-universal firmary-link-linux-x64 firmary-link-linux-arm64 \
+            firmary-link-windows-x64.exe firmary-link-windows-arm64.exe; do
+            [ -f "dist/$f" ] || { echo "::error::missing dist/$f"; exit 1; }
+          done
+          ls -la dist
+      - name: Sign the update manifest
+        env:
+          LINK_UPDATE_SIGNING_KEY: ${{ secrets.LINK_UPDATE_SIGNING_KEY }}
+        run: |
+          go run ./cmd/link-release manifest --version "$VERSION" --dist dist \
+            --base-url "https://github.com/Firmary/bridge/releases/download/v$VERSION" --out dist
+      - name: Write checksums.txt
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          files=()
+          for f in *; do
+            case "$f" in manifest.json | manifest.json.sig | checksums.txt) ;; *) files+=("$f") ;; esac
+          done
+          sha256sum -- "${files[@]}" > checksums.txt
+          cat checksums.txt
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "$TAG" dist/* --verify-tag --prerelease \
-            --title "Firmary Helper ${TAG#v} (beta, unsigned)" --notes-file .github/release-notes.md
+          gh release create "$TAG" dist/* --verify-tag --latest \
+            --title "Firmary Link $VERSION (beta, unsigned)" --notes-file .github/release-notes.md
+
+  refresh-manifest:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write # replace the latest release's manifest; nothing else
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Download the latest manifest
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh release view --json tagName --jq .tagName)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          gh release download "$tag" --pattern manifest.json --dir old
+      - name: Re-sign it
+        env:
+          LINK_UPDATE_SIGNING_KEY: ${{ secrets.LINK_UPDATE_SIGNING_KEY }}
+        run: go run ./cmd/link-release refresh --in old/manifest.json --out new
+      - name: Replace it on the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+        run: gh release upload "$TAG" new/manifest.json new/manifest.json.sig --clobber

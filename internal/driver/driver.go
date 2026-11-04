@@ -1,10 +1,12 @@
-// Package driver defines what the Helper needs from a provider app (Claude Code, Codex).
+// Package driver defines what the Link needs from a provider app (Claude Code, Codex).
 package driver
 
 import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/Firmary/bridge/internal/launch"
 	"github.com/Firmary/bridge/internal/protocol"
@@ -20,14 +22,14 @@ type Pin struct {
 	ArchiveSHA256 map[string]string
 }
 
-// Profile is one Firmary user's provider profile on this device. Dir is owned by the Helper; the user's own
+// Profile is one Firmary user's provider profile on this device. Dir is owned by the Link; the user's own
 // provider install and login are never used.
 type Profile struct {
 	UserID string
 	Dir    string
 }
 
-// ProviderStatus is what the Helper may report about a provider login. It never includes the account email.
+// ProviderStatus is what the Link may report about a provider login. It never includes the account email.
 type ProviderStatus struct {
 	Installed   string // installed pinned version, "" if not installed
 	SignedIn    bool   // signed in with a subscription plan (not an API key)
@@ -67,10 +69,12 @@ type Driver interface {
 	Run(ctx context.Context, p Profile, t Turn, emit func(protocol.StreamEvent)) error
 }
 
-// Sign-in kinds, as in the relay's signin_step message.
+// Sign-in kinds. Browser and device link are as in the relay's signin_step message; paste code is Claude Code's
+// sign-in for a computer without a browser, where the provider's page shows a code the person brings back here.
 const (
 	SignInBrowser    = "browser"
 	SignInDeviceLink = "device_link"
+	SignInPasteCode  = "paste_code"
 )
 
 // SignInStep is what the person needs to finish a provider's own sign-in: the provider's link and, for a device
@@ -81,12 +85,38 @@ type SignInStep struct {
 	UserCode string
 }
 
-// SignInDriver is a Driver that can run the provider's own sign-in in a profile (Codex now; Claude Code in a later
-// slice). SignIn blocks until the sign-in finishes, fails, or ctx ends, calling step once the link is known.
+// SignInUI is how a sign-in reaches the person. Step is called once the provider's link is known. Code, used only by
+// the paste-code kind, asks the person for the code the provider's page showed them; it may be nil when nobody can be
+// asked, and then that kind fails.
+type SignInUI struct {
+	Step func(SignInStep)
+	Code func(ctx context.Context) (string, error)
+}
+
+// SignInDriver is a Driver that can run the provider's own sign-in in a profile. SignIn blocks until the sign-in
+// finishes, fails, or ctx ends. Kinds names the sign-in kinds the provider supports, best first for a computer with
+// a browser.
 type SignInDriver interface {
 	Driver
-	SignIn(ctx context.Context, p Profile, kind string, step func(SignInStep)) error
+	Kinds() []string
+	SignIn(ctx context.Context, p Profile, kind string, ui SignInUI) error
 	SignOut(ctx context.Context, p Profile) error
+}
+
+// DisplayEnv are the variables a provider's own sign-in needs to open the person's browser on a Linux desktop. They
+// are passed to sign-in only, never to a turn.
+var DisplayEnv = []string{"DISPLAY", "WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_CURRENT_DESKTOP",
+	"XDG_SESSION_TYPE", "XDG_DATA_DIRS", "XDG_CONFIG_DIRS", "BROWSER"}
+
+// WithDisplayEnv adds the inherited DisplayEnv variables to env.
+func WithDisplayEnv(env, inherited []string) []string {
+	for _, kv := range inherited {
+		k, _, _ := strings.Cut(kv, "=")
+		if slices.Contains(DisplayEnv, k) {
+			env = append(env, kv)
+		}
+	}
+	return env
 }
 
 // WriteFileAtomic replaces path with b, mode 0600, through a temporary file in the same directory, so a reader

@@ -81,7 +81,7 @@ func TestLaunchProfileVectors(t *testing.T) {
 }
 
 // TestNoServerStringOnCommandLine is the canary test for the ceiling: over every profile the catalog allows, each
-// argument is one of the Helper's own fixed strings or table values, the model, or the prompt file path; the system
+// argument is one of the Link's own fixed strings or table values, the model, or the prompt file path; the system
 // prompt never is. Every catalog tool maps to an exact tool list, and no profile flag repeats a fixed one.
 func TestNoServerStringOnCommandLine(t *testing.T) {
 	const model = "claude-model-canary"
@@ -123,7 +123,7 @@ func TestNoServerStringOnCommandLine(t *testing.T) {
 						ClaudeCode: launch.ClaudeCode{KeepBuiltinInstructions: keep}}
 					for _, a := range runArgs(prof, model, l) {
 						if !own[a] || strings.Contains(a, testkit.SystemPromptCanary) {
-							t.Fatalf("argument %q for %+v is not the Helper's own", a, l)
+							t.Fatalf("argument %q for %+v is not the Link's own", a, l)
 						}
 					}
 				}

@@ -1,6 +1,6 @@
-// Package protocol holds the relay messages and stream events the Helper exchanges with the Firmary relay.
+// Package protocol holds the relay messages and stream events the Link exchanges with the Firmary relay.
 //
-// These mirror the JSON Schemas that Firmary publishes for the Helper (slice S1). Until those schemas are generated
+// These mirror the JSON Schemas that Firmary publishes for the Link (slice S1). Until those schemas are generated
 // into this repo the types are written by hand here; field names follow the relay protocol (build plan §4.3).
 package protocol
 
@@ -16,10 +16,21 @@ import (
 // MachineNameRe is the protocol's machine-name pattern (limit windows, account types, relay error codes).
 var MachineNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,63}$`)
 
-// BusinessAccountTypes are the plan types of a provider organisation's business plan. D7 (#1888): business-only
-// means the firm's own provider organisation, so a login on one of these plans runs a turn only when the ticket's
-// providerOrgIds lists its org id. The Codex driver adds its plan names in S9.
-var BusinessAccountTypes = []string{"team", "enterprise"}
+// BusinessAccountTypes are, per provider app, the plan types of a provider organisation's business plan. D7 (#1888):
+// business-only means the firm's own provider organisation, so a login on one of these plans runs a turn only when
+// the ticket's providerOrgIds lists its org id. They match firmary-os BUSINESS_ACCOUNT_TYPES
+// (apps/web/modules/ai-relay/server/devices.ts): Codex reports its ChatGPT plan type, and a ChatGPT Business
+// workspace is "team" (from before the rename) or "business".
+var BusinessAccountTypes = map[string][]string{
+	"claude-code": {"team", "enterprise"},
+	"codex":       {"team", "business", "enterprise"},
+}
+
+// UpdateFailure is a self-test failure that rolled an update back since the last hello (build plan §5.3).
+type UpdateFailure struct {
+	Version string `json:"version"`
+	Pattern string `json:"pattern"`
+}
 
 // Message types.
 const (
@@ -65,7 +76,7 @@ type Auth struct {
 }
 
 // PairingPending: the relay doesn't know this key yet. PairingNonce is the relay's nonce Nr (base64url, exactly 32
-// bytes), sent only after the commitment. The Helper answers with PairingReveal, shows its code and waits for
+// bytes), sent only after the commitment. The Link answers with PairingReveal, shows its code and waits for
 // Paired.
 type PairingPending struct {
 	Type         string `json:"type"`
@@ -79,7 +90,7 @@ type PairingReveal struct {
 }
 
 // PairingOffer: a person confirmed this key in Firmary (or confirmed it earlier and this computer never answered).
-// The Helper shows the person and firm and sends PairingAnswer: pairing_accept only after an explicit yes on this
+// The Link shows the person and firm and sends PairingAnswer: pairing_accept only after an explicit yes on this
 // computer, pairing_decline on anything else. Until it accepts, the relay sends no welcome, tickets or turns, and it
 // offers the binding again on every connection. The names and email are for the person's eyes only: never logged
 // or stored.
@@ -100,8 +111,8 @@ type PairingAnswer struct {
 }
 
 // Paired: this computer accepted the PairingOffer, binding this key to the offered person. It never comes without
-// the Helper's pairing_accept on the same connection, and its ids must be the offer's. UserName is the person's display name
-// and FirmName the firm's; the Helper shows both ("Paired to <person> · <firm>") so pairing to the wrong account is
+// the Link's pairing_accept on the same connection, and its ids must be the offer's. UserName is the person's display name
+// and FirmName the firm's; the Link shows both ("Paired to <person> · <firm>") so pairing to the wrong account is
 // noticed, and never logs or stores them.
 type Paired struct {
 	Type     string `json:"type"`
@@ -129,7 +140,7 @@ type ProviderInfo struct {
 	// The provider organisation's display name is deliberately never sent (consent, #1888); OrgID is all D7 needs.
 	OrgID string `json:"orgId,omitempty"`
 	// Managed: machine-wide managed settings for the provider were found, so IT policy (hooks, env, gateways)
-	// applies to turns. False means none were found by the Helper's checks.
+	// applies to turns. False means none were found by the Link's checks.
 	Managed bool `json:"managed"`
 }
 
@@ -142,12 +153,16 @@ type Hello struct {
 	Ring                    string         `json:"ring"`
 	Providers               []ProviderInfo `json:"providers"`
 	AcceptedConsentRevision int            `json:"acceptedConsentRevision"`
-	// Launch is what launch profiles this build can carry out (internal/launch). Every Helper sends it.
+	// Launch is what launch profiles this build can carry out (internal/launch). Every Link sends it.
 	Launch *LaunchCapabilities `json:"launch,omitempty"`
+	// ReconnectReason says why this connection opened: start, network, update, crash or server_closed.
+	ReconnectReason string `json:"reconnectReason,omitempty"`
+	// UpdateFailure is an update the Link rolled back since the last hello.
+	UpdateFailure *UpdateFailure `json:"updateFailure,omitempty"`
 }
 
 // LaunchCapabilities lists the launch profile schemas, catalog tools and provider knobs (field names under the
-// profile's claudeCode and codex objects) this Helper build maps. The server never sends anything else.
+// profile's claudeCode and codex objects) this Link build maps. The server never sends anything else.
 type LaunchCapabilities struct {
 	ProfileSchemas []int    `json:"profileSchemas"`
 	Tools          []string `json:"tools"`
@@ -155,9 +170,9 @@ type LaunchCapabilities struct {
 	CodexKnobs     []string `json:"codexKnobs"`
 }
 
-// Turn asks the Helper to run one turn. TurnID must equal the ticket's ticketId. Schema is the structured-output
+// Turn asks the Link to run one turn. TurnID must equal the ticket's ticketId. Schema is the structured-output
 // JSON Schema sent as a JSON string; nil means absent. Profile is the turn's launch profile as JSON text
-// (internal/launch), bound by the ticket's profileHash; the Helper refuses a turn without one.
+// (internal/launch), bound by the ticket's profileHash; the Link refuses a turn without one.
 type Turn struct {
 	Type    string  `json:"type"`
 	TurnID  string  `json:"turnId"`

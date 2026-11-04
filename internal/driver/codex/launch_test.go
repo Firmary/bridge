@@ -71,7 +71,7 @@ func TestLaunchProfileVectors(t *testing.T) {
 func key(setting string) string { k, _, _ := strings.Cut(setting, "="); return k }
 
 // TestNoServerStringOnCommandLine is the canary test for the ceiling: over every profile the catalog allows, each -c
-// setting has a key from the Helper's launch list and a value from its own tables or the instructions file path; the
+// setting has a key from the Link's launch list and a value from its own tables or the instructions file path; the
 // system prompt never reaches the command line. Launch keys never repeat a fixed key, the fixed settings come last,
 // and every catalog tool maps to exact settings.
 func TestNoServerStringOnCommandLine(t *testing.T) {
@@ -140,7 +140,7 @@ func TestNoServerStringOnCommandLine(t *testing.T) {
 							case fixed[key(s)]:
 								seenFixed = true
 							case !own[s]:
-								t.Fatalf("setting %q for %+v is not the Helper's own", s, l)
+								t.Fatalf("setting %q for %+v is not the Link's own", s, l)
 							case seenFixed:
 								t.Fatalf("launch setting %q comes after a fixed one", s)
 							}

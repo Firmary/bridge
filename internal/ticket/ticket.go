@@ -191,7 +191,7 @@ func (v *Verifier) Verify(token string) (Claims, error) {
 	return c, nil
 }
 
-// Sign makes a ticket. The Helper never signs tickets; this exists for the fake relay and tests.
+// Sign makes a ticket. The Link never signs tickets; this exists for the fake relay and tests.
 func Sign(priv ed25519.PrivateKey, c Claims) string {
 	hb, _ := json.Marshal(map[string]string{"alg": "EdDSA", "typ": "JWT"})
 	pb, _ := json.Marshal(c)

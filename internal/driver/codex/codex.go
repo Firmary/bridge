@@ -1,4 +1,4 @@
-// Package codex drives OpenAI's Codex CLI: a pinned copy owned by the Helper, run with its own CODEX_HOME per
+// Package codex drives OpenAI's Codex CLI: a pinned copy owned by the Link, run with its own CODEX_HOME per
 // profile, the update check off, nothing that could act on the computer, and a scrubbed environment.
 package codex
 
@@ -39,7 +39,7 @@ type Driver struct {
 	environ      func() []string
 	managedPaths []string
 	// extraConfig and extraEnv are set only by in-package tests (to point a real binary at a recording stub API).
-	// extraConfig is added to the launch settings, before the Helper's fixed settings.
+	// extraConfig is added to the launch settings, before the Link's fixed settings.
 	extraConfig []string
 	extraEnv    []string
 
@@ -92,7 +92,7 @@ func WithManagedPaths(paths ...string) Option { return func(d *Driver) { d.manag
 
 // ManagedPaths are the machine-wide places Codex reads system and managed configuration from (config.toml,
 // requirements.toml, managed_config.toml, system skills; on macOS also the MDM preferences domain). They apply on
-// top of the Helper's profile and the Helper must not get around them; it reports them so Firmary's firm policy can
+// top of the Link's profile and the Link must not get around them; it reports them so Firmary's firm policy can
 // decide. A ChatGPT workspace's cloud-managed requirements also apply and can't be seen from here.
 func ManagedPaths() []string {
 	switch runtime.GOOS {
@@ -248,7 +248,7 @@ func (d *Driver) prepareIdle(p driver.Profile) error {
 	return d.prepare(p, launch.Profile{})
 }
 
-// command builds a Codex invocation in the profile: Helper settings both in config.toml and as -c session flags
+// command builds a Codex invocation in the profile: Link settings both in config.toml and as -c session flags
 // (which outrank a project's .codex/config.toml), scrubbed environment, the empty work directory, no stdin.
 func (d *Driver) command(ctx context.Context, bin string, p driver.Profile, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, bin, args...)
@@ -259,13 +259,13 @@ func (d *Driver) command(ctx context.Context, bin string, p driver.Profile, args
 	return cmd
 }
 
-// withConfig puts the -c flags for the Helper's settings, with the built-in launch profile, after a subcommand.
+// withConfig puts the -c flags for the Link's settings, with the built-in launch profile, after a subcommand.
 func (d *Driver) withConfig(p driver.Profile, sub ...string) []string {
 	args, _ := d.launchSettings(p, launch.Profile{})
 	return append(sub, configArgs(args)...)
 }
 
-// authFile is the subset of CODEX_HOME/auth.json the Helper reads. Tokens are never kept: only the id_token's
+// authFile is the subset of CODEX_HOME/auth.json the Link reads. Tokens are never kept: only the id_token's
 // plan type and ChatGPT account id claims are decoded, and the email is deliberately not read (consent, #1888).
 type authFile struct {
 	AuthMode     string  `json:"auth_mode"`
@@ -423,7 +423,11 @@ const SignInTimeout = 15 * time.Minute
 // localhost:1455 for the redirect while it runs) or `codex login --device-auth` (a link and a one-time code, for a
 // computer without a browser). step is called once with OpenAI's link. SignIn returns nil only if the profile then
 // reports signed in.
-func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, step func(driver.SignInStep)) error {
+func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, ui driver.SignInUI) error {
+	step := ui.Step
+	if step == nil {
+		step = func(driver.SignInStep) {}
+	}
 	_, bin := d.Installed()
 	if bin == "" {
 		return &driver.Failure{Class: protocol.ClassFatal, Pattern: "provider_not_installed"}
@@ -442,6 +446,10 @@ func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, step
 	ctx, cancel := context.WithTimeout(ctx, SignInTimeout)
 	defer cancel()
 	cmd := d.command(ctx, bin, p, d.withConfig(p, args...)...)
+	if kind == driver.SignInBrowser {
+		// Codex opens the person's browser itself.
+		cmd.Env = driver.WithDisplayEnv(cmd.Env, d.environ())
+	}
 	sc := &signInScanner{kind: kind, step: step}
 	cmd.Stdout, cmd.Stderr = sc, sc
 	runErr := cmd.Run()
@@ -459,8 +467,13 @@ func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, step
 	if err != nil || !st.SignedIn {
 		return &driver.Failure{Class: protocol.ClassAuth, Pattern: "not_signed_in"}
 	}
+	// The sign-in stays readable by this account only.
+	_ = os.Chmod(filepath.Join(codexHome(p), "auth.json"), 0o600)
 	return nil
 }
+
+// Kinds: Codex's browser sign-in, or its device link for a computer without a browser.
+func (d *Driver) Kinds() []string { return []string{driver.SignInBrowser, driver.SignInDeviceLink} }
 
 // SignOut runs `codex logout` in the profile.
 func (d *Driver) SignOut(ctx context.Context, p driver.Profile) error {
