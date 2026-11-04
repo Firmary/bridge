@@ -1,4 +1,4 @@
-// Package logx is the Helper's only local log.
+// Package logx is the Link's only local log.
 //
 // It accepts a closed set of metadata fields (the "Logged" column of the never-log list) and has no free-text
 // field, so prompts, context, outputs, raw provider errors, environment variables, credentials, sign-in URLs and
@@ -42,6 +42,13 @@ const (
 	TurnCancel       Event = "turn_cancel"
 	ProviderUsage    Event = "provider_usage"
 	ProviderLimitHit Event = "provider_limit"
+	UpdateCheck      Event = "update_check"
+	UpdateRejected   Event = "update_rejected"
+	UpdateApplied    Event = "update_applied"
+	UpdateFailed     Event = "update_failed"
+	UpdateCommitted  Event = "update_committed"
+	ProviderSignIn   Event = "provider_signin"
+	ProviderSignOut  Event = "provider_signout"
 )
 
 // Window is one provider limit window, as the provider reports it.
@@ -72,7 +79,7 @@ const (
 	// MaxFileBytes and Files are the rotation policy: 5 files of 1 MB.
 	MaxFileBytes = 1 << 20
 	Files        = 5
-	fileName     = "helper.log"
+	fileName     = "link.log"
 )
 
 var safe = regexp.MustCompile(`^[A-Za-z0-9._:@/+-]{0,128}$`)
@@ -97,7 +104,7 @@ func (f Fields) sanitized() Fields {
 	return f
 }
 
-// Logger writes JSON lines to dir/helper.log with size-based rotation. A nil *Logger discards.
+// Logger writes JSON lines to dir/link.log with size-based rotation. A nil *Logger discards.
 type Logger struct {
 	mu   sync.Mutex
 	dir  string

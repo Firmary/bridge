@@ -8,7 +8,8 @@ import (
 	"testing"
 )
 
-// The product name is not final, so it must live in Name only. Tests may spell it out to pin the copy.
+// The product name must live in Name only, and the former name in FormerName only. Tests may spell them out to pin
+// the copy.
 func TestNameIsOnlyInThisFile(t *testing.T) {
 	root := filepath.Join("..", "..")
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -26,8 +27,10 @@ func TestNameIsOnlyInThisFile(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if strings.Contains(string(b), Name) {
-			t.Errorf("%s spells out %q; use brand.Name", path, Name)
+		for _, n := range []string{Name, FormerName} {
+			if strings.Contains(string(b), n) {
+				t.Errorf("%s spells out %q; use package brand", path, n)
+			}
 		}
 		return nil
 	})
