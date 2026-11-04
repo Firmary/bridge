@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/Firmary/bridge/internal/fakerelay"
 	"github.com/Firmary/bridge/internal/pairing"
 	"github.com/Firmary/bridge/internal/protocol"
 )
@@ -145,6 +147,113 @@ func TestPairingRefusesBadRelayNonce(t *testing.T) {
 	case <-shown:
 		t.Fatal("a code was shown")
 	default:
+	}
+}
+
+type noTurns struct{}
+
+func (noTurns) HandleTurn(context.Context, pairing.Record, protocol.Turn, func(protocol.StreamEvent)) {
+}
+func (noTurns) Cancel(string)                                        {}
+func (noTurns) Hello(context.Context, pairing.Record) protocol.Hello { return protocol.Hello{} }
+
+// TestPairingAcceptStep (security re-review M3): once the code is confirmed in Firmary, the relay offers the binding
+// and the Helper pairs only on the person's yes. A no sends pairing_decline and starts over with a new key. With
+// nobody to ask, the Helper sends nothing: the binding is neither accepted nor revoked.
+func TestPairingAcceptStep(t *testing.T) {
+	for _, c := range []struct {
+		name             string
+		accept, answered bool
+		want             string // the Helper's answer to the offer; "" for none
+	}{
+		{"accept", true, true, protocol.TypePairingAccept},
+		{"decline", false, true, protocol.TypePairingDecline},
+		{"no terminal", false, false, ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r, err := fakerelay.Start("127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(r.Close)
+			r.AutoConfirm = true
+			dir := t.TempDir()
+			keyPath, pairingPath := filepath.Join(dir, "device.key"), filepath.Join(dir, "pairing.json")
+			asked, paired := make(chan string, 4), make(chan string, 4)
+			cl, err := New(Config{URL: r.URL, Env: "local", KeyPath: keyPath, PairingPath: pairingPath,
+				HelperVersion: "0.0.0-test", Handler: noTurns{}, MinBackoff: time.Hour,
+				AskAccept: func(_ context.Context, name, email, firm string) (bool, bool) {
+					asked <- name + "|" + email + "|" + firm
+					return c.accept, c.answered
+				},
+				ShowPaired: func(user, firm string) { paired <- user + "|" + firm }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldKey, _ := os.ReadFile(keyPath)
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan struct{})
+			go func() { cl.Run(ctx); close(done) }()
+			t.Cleanup(func() { cancel(); <-done })
+
+			select {
+			case got := <-asked:
+				if want := fakerelay.UserName + "|" + fakerelay.UserEmail + "|" + fakerelay.FirmName; got != want {
+					t.Fatalf("asked about %q, want %q", got, want)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the offer was never put to the person")
+			}
+			var answer string
+			select {
+			case answer = <-r.Answers:
+			case <-time.After(500 * time.Millisecond):
+			}
+			if answer != c.want {
+				t.Fatalf("Helper answered %q, want %q", answer, c.want)
+			}
+
+			switch c.want {
+			case protocol.TypePairingAccept:
+				select {
+				case got := <-paired:
+					if got != fakerelay.UserName+"|"+fakerelay.FirmName {
+						t.Fatalf("paired to %q", got)
+					}
+				case <-time.After(10 * time.Second):
+					t.Fatal("not paired after accept")
+				}
+				select {
+				case <-r.Hellos:
+				case <-time.After(10 * time.Second):
+					t.Fatal("no hello after paired")
+				}
+				if rec, _ := pairing.Load(pairingPath); rec == nil {
+					t.Fatal("pairing not saved")
+				}
+			case protocol.TypePairingDecline:
+				for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+					if key, _ := os.ReadFile(keyPath); len(key) > 0 && !bytes.Equal(key, oldKey) {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("device key kept after a decline")
+					}
+				}
+				fallthrough
+			default:
+				select {
+				case <-paired:
+					t.Fatal("paired without an accept")
+				case <-r.Hellos:
+					t.Fatal("hello without an accept")
+				default:
+				}
+				if rec, _ := pairing.Load(pairingPath); rec != nil {
+					t.Fatal("pairing saved without an accept")
+				}
+			}
+		})
 	}
 }
 

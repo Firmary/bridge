@@ -50,7 +50,8 @@
         "ticket": "aGVhZGVyLWV4YW1wbGU.cGF5bG9hZC1leGFtcGxl.c2lnbmF0dXJlLWV4YW1wbGU",
         "context": "Client: Example Co. Open requests: 2.",
         "prompt": "Summarize the open requests.",
-        "schema": "{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}}"
+        "schema": "{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}}",
+        "profile": "{\"schema\":1}"
       }
     },
     {
@@ -60,7 +61,8 @@
         "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
         "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
         "context": "",
-        "prompt": "Hello"
+        "prompt": "Hello",
+        "profile": "{\"schema\":1}"
       }
     },
     {
@@ -88,6 +90,18 @@
       "name": "revoke",
       "document": {
         "type": "revoke"
+      }
+    },
+    {
+      "name": "pairing offer",
+      "document": {
+        "type": "pairing_offer",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "firmName": "Example Accounting LLC",
+        "personName": "Dana Reyes",
+        "personEmail": "dana@example.com"
       }
     },
     {
@@ -119,7 +133,8 @@
         "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
         "ticket": "not a token",
         "context": "",
-        "prompt": "Hello"
+        "prompt": "Hello",
+        "profile": "{\"schema\":1}"
       }
     },
     {
@@ -130,7 +145,8 @@
         "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
         "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
         "context": "",
-        "prompt": ""
+        "prompt": "",
+        "profile": "{\"schema\":1}"
       }
     },
     {
@@ -140,7 +156,8 @@
         "type": "turn",
         "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
         "context": "",
-        "prompt": "Hello"
+        "prompt": "Hello",
+        "profile": "{\"schema\":1}"
       }
     },
     {
@@ -169,7 +186,8 @@
         "prompt": "Hello",
         "schema": {
           "type": "object"
-        }
+        },
+        "profile": "{\"schema\":1}"
       }
     },
     {
@@ -179,7 +197,8 @@
         "type": "turn",
         "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
         "context": "",
-        "prompt": "Hello"
+        "prompt": "Hello",
+        "profile": "{\"schema\":1}"
       }
     },
     {
@@ -266,6 +285,18 @@
       }
     },
     {
+      "name": "pairing offer without the person's email",
+      "path": "/personEmail",
+      "document": {
+        "type": "pairing_offer",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "firmName": "Example Accounting LLC",
+        "personName": "Dana Reyes"
+      }
+    },
+    {
       "name": "paired without the person's name",
       "path": "/userName",
       "document": {
@@ -312,6 +343,17 @@
         "context": "",
         "prompt": "Hello",
         "profile": ""
+      }
+    },
+    {
+      "name": "turn without its launch profile",
+      "path": "/profile",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVy.cGF5bG9hZA.c2ln",
+        "context": "",
+        "prompt": "Hello"
       }
     }
   ]

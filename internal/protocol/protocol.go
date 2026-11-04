@@ -26,6 +26,7 @@ const (
 	// Relay -> Helper.
 	TypeChallenge      = "challenge"
 	TypePairingPending = "pairing_pending"
+	TypePairingOffer   = "pairing_offer"
 	TypePaired         = "paired"
 	TypeWelcome        = "welcome"
 	TypeTurn           = "turn"
@@ -33,10 +34,12 @@ const (
 	TypeRevoke         = "revoke"
 	TypeError          = "error"
 	// Helper -> relay.
-	TypeAuth          = "auth"
-	TypePairingReveal = "pairing_reveal"
-	TypeHello         = "hello"
-	TypeEvent         = "event"
+	TypeAuth           = "auth"
+	TypePairingReveal  = "pairing_reveal"
+	TypePairingAccept  = "pairing_accept"
+	TypePairingDecline = "pairing_decline"
+	TypeHello          = "hello"
+	TypeEvent          = "event"
 )
 
 // Envelope is used to read a message's type before decoding the rest.
@@ -75,7 +78,29 @@ type PairingReveal struct {
 	Nonce string `json:"nonce"`
 }
 
-// Paired: the person confirmed the code in Firmary, binding this key to them. UserName is the person's display name
+// PairingOffer: a person confirmed this key in Firmary (or confirmed it earlier and this computer never answered).
+// The Helper shows the person and firm and sends PairingAnswer: pairing_accept only after an explicit yes on this
+// computer, pairing_decline on anything else. Until it accepts, the relay sends no welcome, tickets or turns, and it
+// offers the binding again on every connection. The names and email are for the person's eyes only: never logged
+// or stored.
+type PairingOffer struct {
+	Type        string `json:"type"`
+	DeviceID    string `json:"deviceId"`
+	UserID      string `json:"userId"`
+	FirmID      string `json:"firmId"`
+	FirmName    string `json:"firmName"`
+	PersonName  string `json:"personName"`
+	PersonEmail string `json:"personEmail"`
+}
+
+// PairingAnswer is pairing_accept or pairing_decline (Type) for the offer's DeviceID.
+type PairingAnswer struct {
+	Type     string `json:"type"`
+	DeviceID string `json:"deviceId"`
+}
+
+// Paired: this computer accepted the PairingOffer, binding this key to the offered person. It never comes without
+// the Helper's pairing_accept on the same connection, and its ids must be the offer's. UserName is the person's display name
 // and FirmName the firm's; the Helper shows both ("Paired to <person> · <firm>") so pairing to the wrong account is
 // noticed, and never logs or stores them.
 type Paired struct {
