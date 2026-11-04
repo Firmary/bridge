@@ -1,0 +1,164 @@
+{
+  "$comment": "Each valid document must parse. Each invalid document must fail, with an error at `path` (JSON Pointer). Synthetic values only. `path` is where the Zod parse reports the error; a JSON Schema validator may report a parent or union branch instead, so other implementations need only check pass or fail.",
+  "valid": [
+    {
+      "name": "start",
+      "document": {
+        "t": "start",
+        "model": "claude-sonnet-4-5"
+      }
+    },
+    {
+      "name": "text delta",
+      "document": {
+        "t": "text_delta",
+        "text": "Here is the summary."
+      }
+    },
+    {
+      "name": "usage with limit windows and tokens",
+      "document": {
+        "t": "usage",
+        "windows": [
+          {
+            "window": "five_hour",
+            "usedPercent": 42.5,
+            "resetsAt": "2026-11-01T18:00:00Z"
+          },
+          {
+            "window": "primary",
+            "windowMinutes": 300
+          }
+        ],
+        "tokens": {
+          "input": 1200,
+          "output": 340,
+          "cacheRead": 800
+        }
+      }
+    },
+    {
+      "name": "usage with no windows",
+      "document": {
+        "t": "usage",
+        "windows": []
+      }
+    },
+    {
+      "name": "limit",
+      "document": {
+        "t": "limit",
+        "resetsAt": "2026-11-01T18:00:00Z"
+      }
+    },
+    {
+      "name": "limit without reset time",
+      "document": {
+        "t": "limit"
+      }
+    },
+    {
+      "name": "error",
+      "document": {
+        "t": "error",
+        "class": "rate_limit",
+        "pattern": "claude.rate_limit.five_hour"
+      }
+    },
+    {
+      "name": "done",
+      "document": {
+        "t": "done",
+        "providerSessionId": "3f6a2b1c-session_01",
+        "tokens": {
+          "input": 1200,
+          "output": 360
+        }
+      }
+    },
+    {
+      "name": "unknown field from a newer sender is ignored",
+      "document": {
+        "t": "text_delta",
+        "text": "Hi",
+        "channel": "final"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "unknown event type",
+      "path": "/t",
+      "document": {
+        "t": "tool_use",
+        "name": "x"
+      }
+    },
+    {
+      "name": "raw provider text in the error pattern",
+      "path": "/pattern",
+      "document": {
+        "t": "error",
+        "class": "fatal",
+        "pattern": "Your credit balance is too low to access the API"
+      }
+    },
+    {
+      "name": "unknown error class",
+      "path": "/class",
+      "document": {
+        "t": "error",
+        "class": "unknown",
+        "pattern": "x"
+      }
+    },
+    {
+      "name": "empty text delta",
+      "path": "/text",
+      "document": {
+        "t": "text_delta",
+        "text": ""
+      }
+    },
+    {
+      "name": "used percent above 100",
+      "path": "/windows/0/usedPercent",
+      "document": {
+        "t": "usage",
+        "windows": [
+          {
+            "window": "five_hour",
+            "usedPercent": 150
+          }
+        ]
+      }
+    },
+    {
+      "name": "negative token count",
+      "path": "/tokens/output",
+      "document": {
+        "t": "done",
+        "tokens": {
+          "input": 1,
+          "output": -1
+        }
+      }
+    },
+    {
+      "name": "provider session id carrying free text",
+      "path": "/providerSessionId",
+      "document": {
+        "t": "done",
+        "providerSessionId": "session with spaces"
+      }
+    },
+    {
+      "name": "reset time with a non-UTC offset",
+      "path": "/resetsAt",
+      "document": {
+        "t": "limit",
+        "resetsAt": "2026-11-01T18:00:00+02:00"
+      }
+    }
+  ]
+}

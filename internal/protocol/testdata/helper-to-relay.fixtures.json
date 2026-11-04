@@ -1,0 +1,622 @@
+{
+  "$comment": "Each valid document must parse. Each invalid document must fail, with an error at `path` (JSON Pointer). Synthetic values only. `path` is where the Zod parse reports the error; a JSON Schema validator may report a parent or union branch instead, so other implementations need only check pass or fail.",
+  "valid": [
+    {
+      "name": "auth answering a challenge (auth vector)",
+      "document": {
+        "type": "auth",
+        "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+        "signature": "Bsz0j9sZIiRe4WNq_GgKOepnw3OTgkCUbwDJpf8aTS4VCiniTNZ15GsAPFve_Zw1_BdYIaaHH8LvBDaagw1YBQ",
+        "helperVersion": "0.0.0-dev",
+        "pairingCommit": "H6RSpWsatUs1z-AQBRsmFsY8wWh8tg1_DbEAHdBsBic"
+      }
+    },
+    {
+      "name": "pairing reveal (pairing vector)",
+      "document": {
+        "type": "pairing_reveal",
+        "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8"
+      }
+    },
+    {
+      "name": "pairing reveal with device details",
+      "document": {
+        "type": "pairing_reveal",
+        "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+        "device": {
+          "name": "Dana's MacBook Pro",
+          "os": "darwin",
+          "arch": "arm64"
+        }
+      }
+    },
+    {
+      "name": "hello from a signed-in Helper",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        }
+      }
+    },
+    {
+      "name": "hello from a fresh install",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.0.0-rc.1",
+        "os": "linux",
+        "arch": "x64",
+        "ring": "internal",
+        "providers": [
+          {
+            "id": "claude-code",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "stream event for a turn",
+      "document": {
+        "type": "event",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "event": {
+          "t": "text_delta",
+          "text": "Hello"
+        }
+      }
+    },
+    {
+      "name": "device-link sign-in step",
+      "document": {
+        "type": "signin_step",
+        "provider": "codex",
+        "kind": "device_link",
+        "url": "https://auth.openai.com/codex/device",
+        "userCode": "ABCD-EFGH"
+      }
+    },
+    {
+      "name": "browser sign-in step",
+      "document": {
+        "type": "signin_step",
+        "provider": "claude-code",
+        "kind": "browser"
+      }
+    },
+    {
+      "name": "pairing accepted on the computer",
+      "document": {
+        "type": "pairing_accept",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f"
+      }
+    },
+    {
+      "name": "pairing declined on the computer",
+      "document": {
+        "type": "pairing_decline",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f"
+      }
+    },
+    {
+      "name": "hello declaring launch capabilities",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [1],
+          "tools": ["web_search"],
+          "claudeKnobs": ["replaceBuiltinInstructions"],
+          "codexKnobs": ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]
+        }
+      }
+    },
+    {
+      "name": "hello declaring a tool this server doesn't know",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [1],
+          "tools": ["web_search", "future_tool"],
+          "claudeKnobs": ["replaceBuiltinInstructions"],
+          "codexKnobs": ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "unknown message type",
+      "path": "/type",
+      "document": {
+        "type": "shell",
+        "command": "ls"
+      }
+    },
+    {
+      "name": "unsupported operating system",
+      "path": "/os",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "freebsd",
+        "arch": "x64",
+        "ring": "stable",
+        "providers": [],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "unknown provider in hello",
+      "path": "/providers/0/id",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "linux",
+        "arch": "x64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "gemini-cli",
+            "signedIn": true,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "hello without a consent revision",
+      "path": "/acceptedConsentRevision",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "linux",
+        "arch": "x64",
+        "ring": "stable",
+        "providers": []
+      }
+    },
+    {
+      "name": "event with a turn id that is not a uuid",
+      "path": "/turnId",
+      "document": {
+        "type": "event",
+        "turnId": "turn-1",
+        "event": {
+          "t": "limit"
+        }
+      }
+    },
+    {
+      "name": "event wrapping an invalid stream event",
+      "path": "/event/text",
+      "document": {
+        "type": "event",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "event": {
+          "t": "text_delta"
+        }
+      }
+    },
+    {
+      "name": "sign-in link over plain http",
+      "path": "/url",
+      "document": {
+        "type": "signin_step",
+        "provider": "codex",
+        "kind": "device_link",
+        "url": "http://auth.openai.com/codex/device"
+      }
+    },
+    {
+      "name": "auth public key in padded standard base64",
+      "path": "/publicKey",
+      "document": {
+        "type": "auth",
+        "publicKey": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+        "signature": "Bsz0j9sZIiRe4WNq_GgKOepnw3OTgkCUbwDJpf8aTS4VCiniTNZ15GsAPFve_Zw1_BdYIaaHH8LvBDaagw1YBQ",
+        "helperVersion": "0.0.0-dev",
+        "pairingCommit": "H6RSpWsatUs1z-AQBRsmFsY8wWh8tg1_DbEAHdBsBic"
+      }
+    },
+    {
+      "name": "auth public key with non-zero trailing bits",
+      "path": "/publicKey",
+      "document": {
+        "type": "auth",
+        "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmR",
+        "signature": "Bsz0j9sZIiRe4WNq_GgKOepnw3OTgkCUbwDJpf8aTS4VCiniTNZ15GsAPFve_Zw1_BdYIaaHH8LvBDaagw1YBQ",
+        "helperVersion": "0.0.0-dev",
+        "pairingCommit": "H6RSpWsatUs1z-AQBRsmFsY8wWh8tg1_DbEAHdBsBic"
+      }
+    },
+    {
+      "name": "auth signature that is not 64 bytes",
+      "path": "/signature",
+      "document": {
+        "type": "auth",
+        "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+        "signature": "Bsz0j9sZIiRe4WNq_GgKOepnw3OTgkCUbwDJpf8aTS4VCiniTNZ15GsAPFve_Zw1_BdYIaaHH8LvBDaagw1Y",
+        "helperVersion": "0.0.0-dev",
+        "pairingCommit": "H6RSpWsatUs1z-AQBRsmFsY8wWh8tg1_DbEAHdBsBic"
+      }
+    },
+    {
+      "name": "auth without a Helper version",
+      "path": "/helperVersion",
+      "document": {
+        "type": "auth",
+        "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+        "signature": "Bsz0j9sZIiRe4WNq_GgKOepnw3OTgkCUbwDJpf8aTS4VCiniTNZ15GsAPFve_Zw1_BdYIaaHH8LvBDaagw1YBQ",
+        "pairingCommit": "H6RSpWsatUs1z-AQBRsmFsY8wWh8tg1_DbEAHdBsBic"
+      }
+    },
+    {
+      "name": "hello account type that is free text",
+      "path": "/providers/0/accountType",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "linux",
+        "arch": "x64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "Claude Team",
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "hello pinned version that is empty",
+      "path": "/providers/0/pinnedVersion",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "linux",
+        "arch": "x64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "hello with Go's amd64 architecture name",
+      "path": "/arch",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "linux",
+        "arch": "amd64",
+        "ring": "stable",
+        "providers": [],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "managed flag that is not a boolean",
+      "path": "/providers/0/managed",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": "yes"
+          }
+        ],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "auth without a pairing commitment",
+      "path": "/pairingCommit",
+      "document": {
+        "type": "auth",
+        "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+        "signature": "Bsz0j9sZIiRe4WNq_GgKOepnw3OTgkCUbwDJpf8aTS4VCiniTNZ15GsAPFve_Zw1_BdYIaaHH8LvBDaagw1YBQ",
+        "helperVersion": "0.0.0-dev"
+      }
+    },
+    {
+      "name": "pairing reveal of a 48-byte nonce",
+      "path": "/nonce",
+      "document": {
+        "type": "pairing_reveal",
+        "nonce": "kJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq-wsbKztLW2t7i5uru8vb6_"
+      }
+    },
+    {
+      "name": "pairing reveal with an unknown device os",
+      "path": "/device/os",
+      "document": {
+        "type": "pairing_reveal",
+        "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+        "device": {
+          "os": "plan9"
+        }
+      }
+    },
+    {
+      "name": "hello provider without the managed flag",
+      "path": "/providers/0/managed",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "linux",
+        "arch": "x64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": false
+          }
+        ],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "hello org id that is not a uuid",
+      "path": "/providers/0/orgId",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "linux",
+        "arch": "x64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "orgId": "org-Example",
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "hello carrying the provider organisation's display name",
+      "path": "/providers/0/org",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "linux",
+        "arch": "x64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "org": "Example Accounting LLC",
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c",
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "pairing accept without the offered device",
+      "path": "/deviceId",
+      "document": {
+        "type": "pairing_accept"
+      }
+    },
+    {
+      "name": "launch capabilities with no profile schema",
+      "path": "/launch/profileSchemas",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [],
+          "tools": ["web_search"],
+          "claudeKnobs": ["replaceBuiltinInstructions"],
+          "codexKnobs": ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]
+        }
+      }
+    },
+    {
+      "name": "launch tool name with a space",
+      "path": "/launch/tools/0",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [1],
+          "tools": ["web search"],
+          "claudeKnobs": ["replaceBuiltinInstructions"],
+          "codexKnobs": ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]
+        }
+      }
+    },
+    {
+      "name": "launch capabilities without Codex knobs",
+      "path": "/launch/codexKnobs",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "launch": {
+          "profileSchemas": [1],
+          "tools": ["web_search"],
+          "claudeKnobs": ["replaceBuiltinInstructions"]
+        }
+      }
+    }
+  ]
+}
