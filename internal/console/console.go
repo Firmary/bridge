@@ -1,19 +1,19 @@
-// Package console prints what the Helper tells the person running it. It follows the approved design (design
+// Package console prints what the Link tells the person running it. It follows the approved design (design
 // studio 5877e3252806, "Always-on server" screen) except where the design's pairing flow differs from the secure
-// one the Helper actually runs:
+// one the Link actually runs:
 //
 //   - In the design, Firmary makes the code, the install line carries it, and the server prints "the code it was
-//     given". Here the Helper works the code out with Firmary's relay after it connects (commit-then-reveal, see
+//     given". Here the Link works the code out with Firmary's relay after it connects (commit-then-reveal, see
 //     package pairing). Nobody types, pastes or puts a code on a command line. Firmary shows the same code next to
 //     the computer that asked, and the person pairs only if the two match.
-//   - The code is new on every connection, so after a reconnect the Helper says the code changed.
+//   - The code is new on every connection, so after a reconnect the Link says the code changed.
 //   - The code is printed only to a terminal, never to a service log such as journald, where other admins of the
 //     computer could read it.
 //   - Confirming the code in Firmary doesn't pair by itself (security re-review M3: a code read out to someone else
 //     must not bind this computer to them). Firmary then asks this computer, which names the person, their email
-//     and the firm, and pairs only on "yes" typed here. Anything else declines. With no terminal to ask, the Helper
+//     and the firm, and pairs only on "yes" typed here. Anything else declines. With no terminal to ask, the Link
 //     neither accepts nor declines, and says how to answer.
-//   - "Paired to" names the person and the firm. The Helper then runs only turns whose tickets Firmary signed for
+//   - "Paired to" names the person and the firm. The Link then runs only turns whose tickets Firmary signed for
 //     that person, and the screen says so. Like the code, the names are printed only to a terminal.
 //
 // Nothing printed here goes to the log: pairing codes and names are for the person's eyes only.
@@ -30,7 +30,7 @@ import (
 	"github.com/Firmary/bridge/internal/brand"
 )
 
-// Printer writes the Helper's messages to one output.
+// Printer writes the Link's messages to one output.
 type Printer struct {
 	W io.Writer
 	// Terminal is true when W is a terminal a person is watching. The pairing code is printed only then.
@@ -64,12 +64,12 @@ func IsTerminal(f *os.File) bool {
 
 func (p *Printer) ok(msg string) { fmt.Fprintf(p.W, "ok  %s\n", msg) }
 
-// Banner names the Helper, its version and the computer it runs on, as "<brand.Name> 1.4.2 for Linux (x86_64)".
+// Banner names the Link, its version and the computer it runs on, as "<brand.Name> 1.4.2 for Linux (x86_64)".
 func (p *Printer) Banner(version, goos, goarch string) {
 	fmt.Fprintf(p.W, "%s %s for %s (%s)\n", brand.Name, version, osName(goos), archName(goarch))
 }
 
-// ProviderReady says the Helper's own copy of a provider app is set up.
+// ProviderReady says the Link's own copy of a provider app is set up.
 func (p *Printer) ProviderReady(app string) { p.ok(app + " is ready") }
 
 // ProviderFailed says a provider app could not be set up. err must not carry secrets; Ensure's errors don't.
@@ -77,7 +77,7 @@ func (p *Printer) ProviderFailed(app string, err error) {
 	fmt.Fprintf(p.W, "%s couldn't be set up: %v\n", app, err)
 }
 
-// Reached says the Helper got through to Firmary. The connection is outgoing only.
+// Reached says the Link got through to Firmary. The connection is outgoing only.
 func (p *Printer) Reached() { p.ok("Reached Firmary (outgoing only, nothing to open)") }
 
 // PairingCode shows the code this connection derived. The person compares it with the one Firmary shows; it is
@@ -147,7 +147,7 @@ drain:
 	}
 }
 
-// Paired names the person and firm this Helper is now paired to, so someone who paired to the wrong account can
+// Paired names the person and firm this Link is now paired to, so someone who paired to the wrong account can
 // notice and stop it. When W is not a terminal, the names are left out.
 func (p *Printer) Paired(personName, firmName string) {
 	p.codes, p.offers = 0, 0
@@ -177,4 +177,75 @@ func archName(goarch string) string {
 		return "x86_64"
 	}
 	return goarch
+}
+
+// SigningIn starts a provider sign-in, in the design's words ("Always-on server", step 4).
+func (p *Printer) SigningIn(app, account string) {
+	if app == "Codex" {
+		fmt.Fprintf(p.W, "Signing in to %s with %s.\n", app, account)
+		return
+	}
+	fmt.Fprintf(p.W, "Signing in to %s.\n", app)
+}
+
+// SignInLink shows the provider's own sign-in link and, for a device link, its one-time code. They are shown to the
+// person only and never logged.
+func (p *Printer) SignInLink(url, code string, paste bool) {
+	fmt.Fprintf(p.W, "Open this link on any browser:\n  %s\n", url)
+	switch {
+	case code != "":
+		fmt.Fprintf(p.W, "And enter this code:\n  %s\nWaiting for sign-in…\n", code)
+	case paste:
+		fmt.Fprintln(p.W, "Sign in there and press Authorize. The page then shows a code.")
+	default:
+		fmt.Fprintln(p.W, "Waiting for sign-in…")
+	}
+}
+
+// AskCode asks for the code the provider's page showed (Claude's sign-in on a computer without a browser).
+func (p *Printer) AskCode(again bool) {
+	if again {
+		fmt.Fprint(p.W, "That isn't the code from the page. Copy the whole code and paste it here: ")
+		return
+	}
+	fmt.Fprint(p.W, "Paste that code here and press Return: ")
+}
+
+// SignedIn says the provider sign-in finished, naming the plan (never the email: the Link doesn't read it).
+func (p *Printer) SignedIn(account, plan string) {
+	if plan != "" {
+		p.ok(fmt.Sprintf("Signed in to %s (%s plan)", account, PlanName(plan)))
+		return
+	}
+	p.ok("Signed in to " + account)
+}
+
+// PlanName is how a provider's plan type reads to a person.
+func PlanName(plan string) string {
+	switch plan {
+	case "pro":
+		return "Pro"
+	case "max":
+		return "Max"
+	case "team":
+		return "Team"
+	case "business":
+		return "Business"
+	case "enterprise":
+		return "Enterprise"
+	case "plus":
+		return "Plus"
+	case "free":
+		return "Free"
+	}
+	return plan
+}
+
+// ServiceInstalled says the Link now starts with the computer.
+func (p *Printer) ServiceInstalled(server bool) {
+	if server {
+		p.ok("Starts with this server, keeps running after you log out")
+		return
+	}
+	p.ok("Starts when you log in")
 }

@@ -3,7 +3,7 @@
 // reviews/relay-launch-profile-design-2026-11-02.md §1 and §3, contract firmary-os
 // packages/validators/src/ai-relay/launch-profile.ts).
 //
-// This is the Helper's hard ceiling. A profile can only choose among the named settings below, each with checked
+// This is the Link's hard ceiling. A profile can only choose among the named settings below, each with checked
 // values; each driver turns them into flags or config with its own code. No profile field is ever forwarded as a raw
 // flag, environment variable or config key, so nothing that runs on this computer (shell, files, local fetch, MCP,
 // hooks, other permission modes, other endpoints or keys) can be switched on remotely. Parse refuses the whole profile
@@ -32,11 +32,11 @@ const (
 	MaxTurns        = 10
 )
 
-// Tool names in the Helper's catalog. v1 holds only provider-hosted web search, which runs on Anthropic's or OpenAI's
+// Tool names in the Link's catalog. v1 holds only provider-hosted web search, which runs on Anthropic's or OpenAI's
 // servers, never on this computer. Each driver maps every entry to its own fixed flags or config keys.
 const ToolWebSearch = "web_search"
 
-// Tools is the catalog, in the order the Helper declares it.
+// Tools is the catalog, in the order the Link declares it.
 var Tools = []string{ToolWebSearch}
 
 // Efforts are the provider-neutral effort levels.
@@ -68,7 +68,7 @@ const (
 
 // Profile is a parsed, checked launch profile. The zero value of each field means "absent".
 type Profile struct {
-	// SystemPrompt is the whole system prompt, assembled by the server; "" means the Helper's built-in default.
+	// SystemPrompt is the whole system prompt, assembled by the server; "" means the Link's built-in default.
 	SystemPrompt string
 	// Effort is one of Efforts; "" means the provider app's own default.
 	Effort string

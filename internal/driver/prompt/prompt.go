@@ -1,4 +1,4 @@
-// Package prompt holds Firmary's default system prompt for the provider apps the Helper runs. It replaces the
+// Package prompt holds Firmary's default system prompt for the provider apps the Link runs. It replaces the
 // provider's own built-in prompt (Claude Code's and Codex's coding-agent instructions): each driver passes it in
 // exactly one place.
 package prompt

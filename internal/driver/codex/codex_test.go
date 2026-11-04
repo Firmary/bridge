@@ -31,7 +31,7 @@ func testPin(rel *testkit.CodexRelease) driver.Pin {
 		ArchiveSHA256: map[string]string{testPlatform: rel.ArchiveSHA256}}
 }
 
-// TestBuiltInPinCoversPlatforms: every platform the Helper builds for has both checksums.
+// TestBuiltInPinCoversPlatforms: every platform the Link builds for has both checksums.
 func TestBuiltInPinCoversPlatforms(t *testing.T) {
 	for p := range targets {
 		if !sha256Re.MatchString(BuiltInPin.SHA256[p]) || !sha256Re.MatchString(BuiltInPin.ArchiveSHA256[p]) {
@@ -131,7 +131,7 @@ func installFake(t *testing.T, inherited []string) (*Driver, string) {
 }
 
 // TestEnvironmentScrub signs in and runs a turn with a fake codex that dumps what it received. Only allowlisted
-// variables may reach it, plus the profile's CODEX_HOME; the prompt goes on stdin only; the Helper's settings are on
+// variables may reach it, plus the profile's CODEX_HOME; the prompt goes on stdin only; the Link's settings are on
 // the command line and in the profile's config.toml.
 func TestEnvironmentScrub(t *testing.T) {
 	inherited := []string{
@@ -150,7 +150,7 @@ func TestEnvironmentScrub(t *testing.T) {
 		t.Fatalf("status before sign-in %+v %v", st, err)
 	}
 	var steps []driver.SignInStep
-	if err := d.SignIn(ctx, prof, driver.SignInDeviceLink, func(s driver.SignInStep) { steps = append(steps, s) }); err != nil {
+	if err := d.SignIn(ctx, prof, driver.SignInDeviceLink, driver.SignInUI{Step: func(s driver.SignInStep) { steps = append(steps, s) }}); err != nil {
 		t.Fatalf("sign-in: %v", err)
 	}
 	if len(steps) != 1 || steps[0] != (driver.SignInStep{Kind: driver.SignInDeviceLink, URL: "https://auth.openai.com/codex/device",
@@ -259,14 +259,14 @@ func TestBrowserSignIn(t *testing.T) {
 	d, _ := installFake(t, []string{"PATH=/usr/bin:/bin"})
 	var steps []driver.SignInStep
 	prof := driver.Profile{UserID: "u1", Dir: t.TempDir()}
-	if err := d.SignIn(context.Background(), prof, driver.SignInBrowser, func(s driver.SignInStep) { steps = append(steps, s) }); err != nil {
+	if err := d.SignIn(context.Background(), prof, driver.SignInBrowser, driver.SignInUI{Step: func(s driver.SignInStep) { steps = append(steps, s) }}); err != nil {
 		t.Fatal(err)
 	}
 	if len(steps) != 1 || steps[0].Kind != driver.SignInBrowser || steps[0].UserCode != "" ||
 		steps[0].URL != "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app_X&state=abc" {
 		t.Fatalf("steps %+v", steps)
 	}
-	if err := d.SignIn(context.Background(), prof, "paste_key", func(driver.SignInStep) {}); err == nil {
+	if err := d.SignIn(context.Background(), prof, "paste_key", driver.SignInUI{}); err == nil {
 		t.Fatal("unknown sign-in kind accepted")
 	}
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/driver/claudecode"
+	"github.com/Firmary/bridge/internal/driver/codex"
 	"github.com/Firmary/bridge/internal/fakerelay"
 	"github.com/Firmary/bridge/internal/helper"
 	"github.com/Firmary/bridge/internal/logx"
@@ -53,7 +54,7 @@ func terminal(t *testing.T, r *fakerelay.Relay, turnID string) []protocol.Stream
 	}
 }
 
-// rig is a Helper with a fake Claude Code release, connected to a fake relay and paired.
+// rig is a Link with a fake Claude Code release, connected to a fake relay and paired.
 type rig struct {
 	r                          *fakerelay.Relay
 	h                          *helper.Helper
@@ -70,7 +71,7 @@ type rig struct {
 
 const pinVersion = "2.1.304"
 
-// startRig starts the Helper and pairs it by code match. configure, if set, adjusts the Helper before it starts.
+// startRig starts the Link and pairs it by code match. configure, if set, adjusts the Link before it starts.
 func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	t.Helper()
 	platform := "linux-x64"
@@ -104,7 +105,7 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &helper.Helper{Driver: drv, Pin: pin, Verifier: ticket.NewVerifier([]ed25519.PublicKey{r.TicketPub}, nil),
+	h := &helper.Helper{Providers: []helper.Provider{{Adapter: helper.AdapterClaudeCode, Driver: drv}}, Verifier: ticket.NewVerifier([]ed25519.PublicKey{r.TicketPub}, nil),
 		DataDir: data, Version: "0.0.0-test", Ring: "internal", Log: log}
 	if configure != nil {
 		configure(h)
@@ -124,7 +125,7 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	go func() { client.Run(ctx); close(g.runDone) }()
 	t.Cleanup(g.stop)
 
-	// Pairing: the code the Helper shows is the code Firmary computes for the pending key.
+	// Pairing: the code the Link shows is the code Firmary computes for the pending key.
 	g.code = recv(t, g.shown, "pairing code")
 	if relayCode := recv(t, r.Codes, "relay code"); relayCode != g.code {
 		t.Fatalf("helper shows %s, relay computed %s", g.code, relayCode)
@@ -140,7 +141,7 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	return g
 }
 
-// stop stops the Helper and closes its log. It is safe to call more than once.
+// stop stops the Link and closes its log. It is safe to call more than once.
 func (g *rig) stop() {
 	g.cancel()
 	<-g.runDone
@@ -157,7 +158,7 @@ func TestHelloArch(t *testing.T) {
 }
 
 // TestHelperAgainstFakeRelay pairs by code match, says hello, streams a turn, refuses bad tickets, reconnects,
-// handles revoke, and then checks that nothing the Helper must never log reached its data directory.
+// handles revoke, and then checks that nothing the Link must never log reached its data directory.
 func TestHelperAgainstFakeRelay(t *testing.T) {
 	const version = pinVersion
 	g := startRig(t, nil)
@@ -241,7 +242,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	r.Drop()
 	recv(t, r.Hellos, "hello after reconnect")
 
-	// Revoke wipes the pairing and the key; the Helper comes back as a new, unpaired device.
+	// Revoke wipes the pairing and the key; the Link comes back as a new, unpaired device.
 	oldKey, _ := os.ReadFile(keyPath)
 	if err := r.SendRaw(protocol.Revoke{Type: protocol.TypeRevoke}); err != nil {
 		t.Fatal(err)
@@ -259,7 +260,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 
 	g.stop()
 
-	// Never-log: scan everything the Helper wrote (except the provider binary itself, which is the fake script).
+	// Never-log: scan everything the Link wrote (except the provider binary itself, which is the fake script).
 	var written strings.Builder
 	for _, e := range []string{"logs", "pairing.json", "profiles"} {
 		written.WriteString(testkit.ReadDir(t, filepath.Join(data, e)))
@@ -268,7 +269,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	for _, canary := range []string{testkit.PromptCanary, testkit.ContextCanary, testkit.OutputCanary, testkit.StderrCanary,
 		testkit.EmailCanary, testkit.OrgCanary, testkit.EnvCanary, code, code2, fakerelay.UserName, fakerelay.UserEmail, fakerelay.FirmName, "sk-ant"} {
 		if strings.Contains(all, canary) {
-			t.Errorf("never-logged value %q found in the Helper's files", canary)
+			t.Errorf("never-logged value %q found in the Link's files", canary)
 		}
 	}
 	logs := testkit.ReadDir(t, filepath.Join(data, "logs"))
@@ -282,8 +283,8 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	}
 }
 
-// TestDroppedConnectionCancelsTurn: when the connection drops during a turn, the turn is cancelled and the Helper
-// reconnects at once instead of waiting for the turn to finish. A turn that runs past the Helper's deadline ends
+// TestDroppedConnectionCancelsTurn: when the connection drops during a turn, the turn is cancelled and the Link
+// reconnects at once instead of waiting for the turn to finish. A turn that runs past the Link's deadline ends
 // with a turn_timeout error.
 // noAccountType reports the provider signed in but with no (reportable) account type.
 type noAccountType struct{ driver.Driver }
@@ -306,7 +307,7 @@ func (d personalPlan) Status(ctx context.Context, p driver.Profile) (driver.Prov
 // TestPersonalPlanWithoutProviderOrgs: where a firm allows personal plans, a personal-plan login runs a turn whose
 // ticket has no providerOrgIds.
 func TestPersonalPlanWithoutProviderOrgs(t *testing.T) {
-	g := startRig(t, func(h *helper.Helper) { h.Driver = personalPlan{h.Driver} })
+	g := startRig(t, func(h *helper.Helper) { h.Providers[0].Driver = personalPlan{h.Providers[0].Driver} })
 	c := g.r.Claims(g.dev, pinVersion, "", testkit.PromptCanary)
 	c.AccountTypes, c.ProviderOrgIDs = []string{"pro", "max"}, nil
 	if err := g.r.SendTurn(c, "", testkit.PromptCanary); err != nil {
@@ -320,7 +321,7 @@ func TestPersonalPlanWithoutProviderOrgs(t *testing.T) {
 // TestEmptyAccountTypeRefused: a signed-in provider without an account type never runs a turn, even for a ticket
 // that lists an empty account type.
 func TestEmptyAccountTypeRefused(t *testing.T) {
-	g := startRig(t, func(h *helper.Helper) { h.Driver = noAccountType{h.Driver} })
+	g := startRig(t, func(h *helper.Helper) { h.Providers[0].Driver = noAccountType{h.Providers[0].Driver} })
 	c := g.r.Claims(g.dev, pinVersion, "", testkit.PromptCanary)
 	c.AccountTypes = []string{"team", ""}
 	if err := g.r.SendTurn(c, "", testkit.PromptCanary); err != nil {
@@ -449,8 +450,8 @@ func TestBusyTurnNeverAsksProvider(t *testing.T) {
 	var cd *countingDriver
 	g := startRig(t, func(h *helper.Helper) {
 		h.TurnTimeout = 2 * time.Second
-		cd = &countingDriver{Driver: h.Driver, running: make(chan struct{}, 4)}
-		h.Driver = cd
+		cd = &countingDriver{Driver: h.Providers[0].Driver, running: make(chan struct{}, 4)}
+		h.Providers[0].Driver = cd
 	})
 	r := g.r
 	c := r.Claims(g.dev, pinVersion, "", testkit.SlowPrompt)
@@ -471,4 +472,82 @@ func TestBusyTurnNeverAsksProvider(t *testing.T) {
 		t.Fatalf("the busy turn asked the provider for its status (%d calls)", n-before)
 	}
 	terminal(t, r, c.TicketID) // the slow turn ends at its deadline
+}
+
+// TestCodexTurnThroughLink: with Codex signed in to a ChatGPT Business workspace, a ticket for the helper-codex
+// adapter runs on the Codex driver, hello reports both provider apps, and an adapter paused by the update manifest
+// is refused.
+func TestCodexTurnThroughLink(t *testing.T) {
+	const codexVersion = "0.166.0"
+	codexDump := t.TempDir()
+	var cdrv *codex.Driver
+	paused := false
+	g := startRig(t, func(h *helper.Helper) {
+		rel := testkit.NewCodexRelease(t, codexVersion, "x86_64-unknown-linux-musl", testkit.FakeCodex(codexDump))
+		var err error
+		cdrv, err = codex.New(filepath.Join(h.DataDir, "providers", "codex"), codex.WithRelease(rel.URL, nil),
+			codex.WithPlatform("linux-x64"), codex.WithManagedPaths())
+		if err != nil {
+			t.Fatal(err)
+		}
+		pin := driver.Pin{Version: codexVersion, SHA256: map[string]string{"linux-x64": rel.SHA256},
+			ArchiveSHA256: map[string]string{"linux-x64": rel.ArchiveSHA256}}
+		if err := cdrv.Ensure(context.Background(), pin); err != nil {
+			t.Fatal(err)
+		}
+		h.Providers = append(h.Providers, helper.Provider{Adapter: helper.AdapterCodex, Driver: cdrv})
+		h.Disabled = func(a string) bool { return paused && a == helper.AdapterCodex }
+	})
+	if len(g.hello.Providers) != 2 || g.hello.Providers[1].ID != "codex" || g.hello.Providers[1].PinnedVersion != codexVersion ||
+		g.hello.Providers[1].SignedIn {
+		t.Fatalf("hello providers %+v", g.hello.Providers)
+	}
+	rec, _ := pairing.Load(g.pairingPath)
+	prof := helper.Profile(g.data, *rec, "codex")
+	if err := cdrv.SignIn(context.Background(), prof, driver.SignInDeviceLink, driver.SignInUI{}); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := cdrv.Status(context.Background(), prof); !st.SignedIn || st.AccountType != "business" || st.OrgID != testkit.CodexAccountID {
+		t.Fatalf("codex status %+v", st)
+	}
+	codexClaims := func() ticket.Claims {
+		c := g.r.Claims(g.dev, codexVersion, "", testkit.PromptCanary)
+		c.Adapter, c.Model = helper.AdapterCodex, "gpt-5.5"
+		c.AccountTypes, c.ProviderOrgIDs = []string{"team", "business", "enterprise"}, []string{testkit.CodexAccountID}
+		return c
+	}
+	c := codexClaims()
+	if err := g.r.SendTurn(c, "", testkit.PromptCanary); err != nil {
+		t.Fatal(err)
+	}
+	evs := terminal(t, g.r, c.TicketID)
+	var text strings.Builder
+	for _, e := range evs {
+		text.WriteString(e.Text)
+	}
+	if evs[len(evs)-1].T != protocol.EvDone || !strings.Contains(text.String(), testkit.OutputCanary) {
+		t.Fatalf("codex turn events %+v", evs)
+	}
+	if _, err := os.Stat(filepath.Join(codexDump, "stdin")); err != nil {
+		t.Fatal("the turn didn't run on Codex")
+	}
+
+	// A business plan without the firm's workspace in the ticket is refused, as on Claude Code.
+	c = codexClaims()
+	c.ProviderOrgIDs = nil
+	if err := g.r.SendTurn(c, "", testkit.PromptCanary); err != nil {
+		t.Fatal(err)
+	}
+	if evs := terminal(t, g.r, c.TicketID); len(evs) != 1 || evs[0].Pattern != "provider_org_not_allowed" {
+		t.Fatalf("got %+v, want provider_org_not_allowed", evs)
+	}
+
+	paused = true
+	c = codexClaims()
+	if err := g.r.SendTurn(c, "", testkit.PromptCanary); err != nil {
+		t.Fatal(err)
+	}
+	if evs := terminal(t, g.r, c.TicketID); len(evs) != 1 || evs[0].Pattern != "adapter_disabled" {
+		t.Fatalf("got %+v, want adapter_disabled", evs)
+	}
 }

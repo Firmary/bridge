@@ -1,4 +1,4 @@
-// Package relay is the Helper's one outbound connection to the Firmary relay: challenge-response authentication
+// Package relay is the Link's one outbound connection to the Firmary relay: challenge-response authentication
 // with the device key, code-match pairing and the accept step, hello, turn dispatch, and reconnect with backoff.
 package relay
 
@@ -46,9 +46,17 @@ type Config struct {
 	ShowPairingCode func(code string)               // shows the code to the person; never logged
 	ShowPaired      func(userName, firmName string) // tells the person who they paired to; never logged
 	// AskAccept shows the person and firm a pairing offer names and asks the person at this computer whether to
-	// pair. answered is false when nobody can be asked (no terminal) or ctx ended first: then the Helper sends
+	// pair. answered is false when nobody can be asked (no terminal) or ctx ended first: then the Link sends
 	// nothing and the relay keeps the binding unaccepted. The arguments are never logged. Nil never answers.
-	AskAccept  func(ctx context.Context, personName, personEmail, firmName string) (accept, answered bool)
+	AskAccept func(ctx context.Context, personName, personEmail, firmName string) (accept, answered bool)
+	// ShowReady says the connection is up and paired, after hello. ShowOffline says it ended and the Link is trying
+	// again. ShowUnpaired says the pairing was removed (revoked, declined or unknown to the relay). Each may be nil.
+	ShowReady    func(rec pairing.Record)
+	ShowOffline  func()
+	ShowUnpaired func()
+	// Refresh, if set, makes the Link send a fresh hello on the live connection, for example after a provider
+	// sign-in, when no turn is running.
+	Refresh    <-chan struct{}
 	MinBackoff time.Duration
 	MaxBackoff time.Duration
 }
@@ -137,8 +145,11 @@ func (c *Client) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		if c.cfg.ShowOffline != nil {
+			c.cfg.ShowOffline()
+		}
 		c.cfg.Log.Log(logx.RelayDisconnect, logx.Fields{Reason: reasonOf(err), DurationMs: time.Since(started).Milliseconds(), Attempt: attempt})
-		// A revoke or reset still waits: a hostile relay must not be able to make the Helper spin.
+		// A revoke or reset still waits: a hostile relay must not be able to make the Link spin.
 		if errors.Is(err, errRevoked) || errors.Is(err, errReset) || errors.Is(err, errDeclined) || time.Since(started) > stableAfter {
 			backoff = c.cfg.MinBackoff
 		}
@@ -258,10 +269,16 @@ func (c *Client) session(ctx context.Context, attempt int) error {
 	if err := cn.send(hello); err != nil {
 		return err
 	}
+	if c.cfg.ShowReady != nil {
+		c.cfg.ShowReady(rec)
+	}
+	if c.cfg.Refresh != nil {
+		go c.refresh(sctx, cn, rec)
+	}
 
 	var turns sync.WaitGroup
 	// Cancel running turns before waiting for them: after a dropped connection nobody receives their output, and
-	// waiting with the session context live would keep the Helper offline until they finish.
+	// waiting with the session context live would keep the Link offline until they finish.
 	defer func() {
 		cancel()
 		turns.Wait()
@@ -298,6 +315,36 @@ func (c *Client) session(ctx context.Context, attempt int) error {
 		default:
 			c.cfg.Log.Log(logx.UnknownMessage, logx.Fields{Reason: typ})
 		}
+	}
+}
+
+// idler is a TurnHandler that can say whether a turn is running.
+type idler interface{ Idle() bool }
+
+// refresh sends a fresh hello whenever Refresh fires, waiting for any running turn to end first: a provider status
+// check must not run under a turn.
+func (c *Client) refresh(ctx context.Context, cn *conn, rec pairing.Record) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.cfg.Refresh:
+		}
+		if h, ok := c.cfg.Handler.(idler); ok {
+			for !h.Idle() {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(2 * time.Second):
+				}
+			}
+		}
+		hello := c.cfg.Handler.Hello(ctx, rec)
+		hello.Type = protocol.TypeHello
+		if ctx.Err() != nil || cn.send(hello) != nil {
+			return
+		}
+		c.cfg.Log.Log(logx.HelloSent, logx.Fields{DeviceID: rec.DeviceID, Version: c.cfg.HelperVersion, Reason: "refresh"})
 	}
 }
 
@@ -370,7 +417,7 @@ func (c *Client) authenticate(ctx context.Context, cn *conn) (pairing.Record, er
 				return none, sessionError("bad_welcome")
 			}
 			if local == nil || *local != rec {
-				// The relay names a pairing this Helper didn't see confirmed. Never adopt it: start over with a
+				// The relay names a pairing this Link didn't see confirmed. Never adopt it: start over with a
 				// new key, so the next connection pairs by code match.
 				return none, c.wipe(logx.PairingPending, logx.Fields{Reason: "pairing_mismatch"}, errReset)
 			}
@@ -547,6 +594,9 @@ func (c *Client) revoke() error { return c.wipe(logx.Revoked, logx.Fields{}, err
 // wipe deletes the pairing and the device key, then makes a fresh key so the next connection pairs anew.
 func (c *Client) wipe(ev logx.Event, f logx.Fields, result error) error {
 	c.cfg.Log.Log(ev, f)
+	if c.cfg.ShowUnpaired != nil {
+		c.cfg.ShowUnpaired()
+	}
 	if err := pairing.Delete(c.cfg.PairingPath); err != nil {
 		return sessionError("revoke_failed")
 	}

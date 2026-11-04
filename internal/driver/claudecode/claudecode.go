@@ -1,4 +1,4 @@
-// Package claudecode drives Anthropic's Claude Code CLI: a pinned copy owned by the Helper, run with its own
+// Package claudecode drives Anthropic's Claude Code CLI: a pinned copy owned by the Link, run with its own
 // profile directory, Anthropic's updater off, no tools, and a scrubbed environment.
 package claudecode
 
@@ -64,7 +64,7 @@ func WithPlatform(p string) Option { return func(d *Driver) { d.platform = p } }
 func WithManagedDirs(dirs ...string) Option { return func(d *Driver) { d.managedDirs = dirs } }
 
 // ManagedDirs are the machine-wide directories Claude Code reads managed settings from (managed-settings.json,
-// managed-settings.d/, managed-mcp.json). They apply even with --setting-sources "", and the Helper must not get
+// managed-settings.d/, managed-mcp.json). They apply even with --setting-sources "", and the Link must not get
 // around them; it reports them so Firmary's firm policy can decide.
 func ManagedDirs() []string {
 	switch runtime.GOOS {
@@ -142,7 +142,7 @@ func prepare(p driver.Profile) error {
 	return nil
 }
 
-// authStatus is the subset of `claude auth status --json` the Helper reads. Email and orgName are deliberately not
+// authStatus is the subset of `claude auth status --json` the Link reads. Email and orgName are deliberately not
 // read (consent, #1888). orgId is read so a ticket can bind a turn to one provider organisation (providerOrgIds), not
 // just a plan type.
 type authStatus struct {

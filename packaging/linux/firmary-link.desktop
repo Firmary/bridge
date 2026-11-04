@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Firmary Link
+Comment=Connect your own Claude or ChatGPT plan to Firmary
+Exec=firmary-link
+Icon=firmary-link
+Terminal=false
+Categories=Network;Utility;
