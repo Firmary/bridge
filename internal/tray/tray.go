@@ -1,9 +1,11 @@
 //go:build !darwin || cgo
 
 // Package tray is the desktop app: the Link in the macOS menu bar, the Windows notification area or a Linux desktop's
-// tray. It shows the pairing code and status, asks the one pairing question, and offers sign-in, Open at login,
-// Check for updates and Quit. It opens no window and listens on nothing; notifications appear only when the Link
-// needs the person (a pairing code, a pairing question, a finished or failed sign-in, an update that failed).
+// tray. It takes the pairing code Firmary shows (a native box, design 5877e3252806), shows who it is connecting to
+// and the pairing status, and offers Cancel, Unpair, sign-in, Open at login, Check for updates and Quit. It listens
+// on nothing. At login it starts quietly: the icon appears, it re-checks the pairing, and a window or notification
+// appears only when the Link needs the person (a code to enter, a pairing question, a finished or failed sign-in, an
+// update that failed).
 package tray
 
 import (
@@ -52,10 +54,12 @@ type App struct {
 	cancel context.CancelFunc
 
 	mu        sync.Mutex
-	phase     string // starting, offline, waiting, offer, paired, connected
-	code      string
+	phase     string // starting, reached, needs_code, connecting, claimed, offer, connected, offline
+	code      string // the typed code, while connecting with it
+	claimed   agent.Names
 	names     agent.Names
 	paired    bool
+	asked     bool // the code box opened by itself once
 	offer     *offer
 	providers map[string]provider
 
@@ -74,9 +78,10 @@ type provider struct {
 }
 
 type menu struct {
-	status, code, codeHint, offerWho, offerFirm, accept, decline *systray.MenuItem
-	provStatus, provAction                                       map[string]*systray.MenuItem
-	login, update, quit                                          *systray.MenuItem
+	status, enterCode, code, codeHint, cancel, unpair *systray.MenuItem
+	offerWho, offerFirm, accept, decline              *systray.MenuItem
+	provStatus, provAction                            map[string]*systray.MenuItem
+	login, update, quit                               *systray.MenuItem
 }
 
 // Run runs the desktop app until the person quits. It must be called on the main goroutine.
@@ -107,10 +112,13 @@ func (a *App) ready() {
 	m := &a.m
 	m.status = systray.AddMenuItem("Starting…", "")
 	m.status.Disable()
+	m.enterCode = systray.AddMenuItem("Enter pairing code…", "The code Firmary shows in Settings › Connections")
 	m.code = systray.AddMenuItem("", "")
 	m.code.Disable()
-	m.codeHint = systray.AddMenuItem("Check that Firmary shows the same code, then pair there", "")
+	m.codeHint = systray.AddMenuItem("Confirm in your browser if this matches", "")
 	m.codeHint.Disable()
+	m.cancel = systray.AddMenuItem("Cancel", "Stop connecting and forget this code")
+	m.unpair = systray.AddMenuItem("Unpair this computer", "")
 	m.offerWho = systray.AddMenuItem("", "")
 	m.offerWho.Disable()
 	m.offerFirm = systray.AddMenuItem("", "")
@@ -164,18 +172,48 @@ func (a *App) runAgent() {
 		}
 	}()
 	err := ag.Run(a.ctx, agent.Hooks{
-		Reached: func() { a.set(func() { a.phase = "reached" }) },
-		PairingCode: func(code string) {
-			a.set(func() { a.phase, a.code = "waiting", code })
-			notify.Show("Pairing code "+code, "Check that Firmary shows the same code, then pair there.")
+		Reached: func() {
+			a.set(func() {
+				if a.phase != "claimed" && a.phase != "offer" {
+					a.phase = "reached"
+				}
+			})
+		},
+		NeedsCode: func() {
+			a.mu.Lock()
+			first := !a.asked
+			a.asked = true
+			a.mu.Unlock()
+			a.set(func() {
+				a.phase, a.paired, a.names, a.code, a.claimed = "needs_code", false, agent.Names{}, "", agent.Names{}
+			})
+			if first {
+				// Not paired: this is the moment the Link needs the person, so the code box opens by itself, once.
+				go a.askCode("")
+			}
+		},
+		Claimed: func(person, firm, code string) {
+			a.set(func() { a.phase, a.code, a.claimed = "claimed", code, agent.Names{Person: person, Firm: firm} })
+			notify.Show("Connecting to Firmary as "+person+" · "+firm, "Pairing code "+code+". Confirm in your browser if this matches.")
+		},
+		CodeRejected: func(reason string) {
+			a.mu.Lock()
+			a.asked = true // askCode below is the one box for this
+			a.mu.Unlock()
+			msg := "That code didn't work. Show a new code in Firmary and enter it here."
+			if reason == "expired" {
+				msg = "That code has expired. Show a new code in Firmary and enter it here."
+			}
+			go a.askCode(msg)
 		},
 		AskAccept: a.ask,
 		Paired: func(person, firm string) {
 			a.set(func() {
-				a.phase, a.paired, a.names, a.code, a.offer = "connected", true, agent.Names{Person: person, Firm: firm}, "", nil
+				a.phase, a.paired, a.names, a.code, a.claimed, a.offer = "connected", true, agent.Names{Person: person, Firm: firm}, "", agent.Names{}, nil
 			})
-			notify.Show("Paired to "+person+" · "+firm, "This computer now runs only requests Firmary signs for "+person+". Not you? Unpair it in Firmary.")
+			notify.Show("Paired to "+person+" · "+firm, "This computer now runs only requests Firmary signs for "+person+". Not you? Unpair it from the "+brand.Name+" menu.")
 		},
+		ProvidersChanged: func() { go a.refreshProviders() },
 		Ready: func(pairing.Record) {
 			a.set(func() { a.phase, a.paired, a.code = "connected", true, "" })
 			a.set(func() { a.names, _ = a.Agent.LoadNames() })
@@ -189,6 +227,30 @@ func (a *App) runAgent() {
 	if err != nil && a.ctx.Err() == nil {
 		notify.Show(brand.Name+" stopped", err.Error())
 		systray.Quit()
+	}
+}
+
+// askCode opens the box for the pairing code Firmary shows, with msg above the question when the last code was
+// refused, until a well-formed code is entered or the person cancels.
+func (a *App) askCode(msg string) {
+	if !notify.CanAskText() {
+		notify.Show(brand.Name+" isn't paired", "To pair, open a terminal and run: "+brand.Command+" pair")
+		return
+	}
+	prompt := "Enter the pairing code Firmary shows in Settings › Connections, like ABCD-EFGH."
+	if msg != "" {
+		prompt = msg
+	}
+	for {
+		text, ok := notify.AskText(a.ctx, brand.Name, prompt, "Connect")
+		if !ok {
+			return
+		}
+		if a.Agent.SetCode(text) == nil {
+			a.set(func() { a.phase = "connecting" })
+			return
+		}
+		prompt = "That isn't a pairing code. It has eight letters and digits, like ABCD-EFGH."
 	}
 }
 
@@ -258,20 +320,24 @@ func (a *App) refreshProviders() {
 	}
 }
 
-// statusLine is the status in the menu: Not paired, Waiting for code, Paired to <firm>, Connected, Offline.
+// statusLine is the status in the menu: Not paired, Connecting to Firmary as <person> · <firm>, Paired to <person>
+// · <firm>, Offline.
 func (a *App) statusLine() string {
-	firm := a.names.Firm
 	paired := "Paired"
-	if firm != "" {
-		paired = "Paired to " + firm
+	if a.names.Firm != "" {
+		paired = "Paired to " + a.names.Person + " · " + a.names.Firm
 	}
 	switch a.phase {
-	case "waiting":
-		return "Not paired · waiting for you to confirm the code in Firmary"
+	case "needs_code":
+		return "Not paired"
+	case "connecting":
+		return "Connecting to Firmary…"
+	case "claimed":
+		return "Connecting to Firmary as " + a.claimed.Person + " · " + a.claimed.Firm
 	case "offer":
 		return "Firmary asks to pair this computer"
 	case "connected":
-		return "Connected · " + paired
+		return paired
 	case "offline":
 		if a.paired {
 			return "Offline · " + paired + " · trying again"
@@ -292,14 +358,22 @@ func (a *App) render() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	m.status.SetTitle(a.statusLine())
-	if a.phase == "waiting" && a.code != "" {
-		m.code.SetTitle("Pairing code: " + a.code)
-		m.code.Show()
-		m.codeHint.Show()
-	} else {
-		m.code.Hide()
-		m.codeHint.Hide()
+	show := func(it *systray.MenuItem, on bool) {
+		if on {
+			it.Show()
+		} else {
+			it.Hide()
+		}
 	}
+	connecting := a.phase == "connecting" || a.phase == "claimed"
+	show(m.enterCode, !a.paired && !connecting && a.offer == nil)
+	if a.phase == "claimed" && a.code != "" {
+		m.code.SetTitle("Pairing code: " + a.code)
+	}
+	show(m.code, a.phase == "claimed" && a.code != "")
+	show(m.codeHint, a.phase == "claimed")
+	show(m.cancel, connecting)
+	show(m.unpair, a.paired)
 	if o := a.offer; o != nil {
 		m.offerWho.SetTitle(o.person + " (" + o.email + ")")
 		m.offerFirm.SetTitle(o.firm)
@@ -350,6 +424,13 @@ func (a *App) clicks() {
 		select {
 		case <-a.ctx.Done():
 			return
+		case <-m.enterCode.ClickedCh:
+			go a.askCode("")
+		case <-m.cancel.ClickedCh:
+			a.Agent.CancelPairing()
+			a.set(func() { a.phase, a.code, a.claimed = "needs_code", "", agent.Names{} })
+		case <-m.unpair.ClickedCh:
+			go a.unpair()
 		case <-m.accept.ClickedCh:
 			a.answer(true)
 		case <-m.decline.ClickedCh:
@@ -388,6 +469,19 @@ func (a *App) answer(yes bool) {
 	}
 }
 
+// unpair removes this computer's pairing (Unpair in the menu). Firmary sees it go offline; the person removes it
+// there, and can pair again with a new code.
+func (a *App) unpair() {
+	if err := a.Agent.Unpair(); err != nil {
+		notify.Show(brand.Name, "Couldn't unpair this computer. Try again, or quit "+brand.Name+" and run "+brand.Command+" unpair.")
+		return
+	}
+	a.set(func() {
+		a.paired, a.names, a.phase, a.providers = false, agent.Names{}, "needs_code", map[string]provider{}
+	})
+	notify.Show("Unpaired", "This computer no longer works for Firmary. To pair it again, enter a new code from Firmary in the "+brand.Name+" menu.")
+}
+
 func (a *App) toggleSignIn(id string) {
 	info, _ := agent.ProviderByName(id)
 	a.mu.Lock()
@@ -398,7 +492,7 @@ func (a *App) toggleSignIn(id string) {
 	}
 	prof, err := a.Agent.Profile(id)
 	if err != nil {
-		notify.Show(brand.Name, "Pair this computer in Firmary first, then sign in to "+info.Account+".")
+		notify.Show(brand.Name, "Pair this computer first (Enter pairing code… in the menu), then sign in to "+info.Account+".")
 		return
 	}
 	d := a.Agent.Driver(id)

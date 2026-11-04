@@ -8,11 +8,15 @@ Apple or Microsoft yet, so your computer warns the first time you open it. A sig
 - **Windows:** run `Firmary-Link-Setup.exe`. If SmartScreen says "Windows protected your PC", click **More info ›
   Run anyway**.
 - **Linux desktop:** install the `.deb` for your computer (`amd64` for most, `arm64` for Arm).
-- **Linux server or VPS:** run this one line, then follow what it says:
+- **Linux server or VPS:** in Firmary, open Settings › Connections › Add a server and paste the one line it shows
+  (it carries your pairing code), then confirm the code in Firmary:
 
   ```sh
-  curl -fsSL https://github.com/Firmary/bridge/releases/latest/download/install.sh | sh
+  curl -fsSL https://github.com/Firmary/bridge/releases/latest/download/install.sh | sh -s -- --code ABCD-EFGH
   ```
+
+To pair the app on a Mac, Windows or Linux desktop, choose **Enter pairing code…** in its menu (it asks by itself the
+first time) and type the code Firmary shows.
 
 Once installed, Firmary Link updates itself quietly from this release's signed `manifest.json`.
 

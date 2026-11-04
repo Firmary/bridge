@@ -114,6 +114,14 @@
         "prompt": "Hello",
         "profile": "{\"schema\":1}"
       }
+    },
+    {
+      "name": "pairing claimed (pairing v2)",
+      "document": {
+        "type": "pairing_claimed",
+        "firmName": "Harlow & Pike CPA",
+        "personName": "Maria Okafor"
+      }
     }
   ],
   "invalid": [
@@ -355,6 +363,14 @@
         "context": "",
         "prompt": "Hello"
       }
+    },
+    {
+      "name": "pairing claimed without a person",
+      "document": {
+        "type": "pairing_claimed",
+        "firmName": "Harlow & Pike CPA"
+      },
+      "path": "/personName"
     }
   ]
 }

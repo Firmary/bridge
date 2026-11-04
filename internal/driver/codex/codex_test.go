@@ -292,15 +292,15 @@ func TestStatusNeedsChatGPTLogin(t *testing.T) {
 	home := t.TempDir()
 	write := func(s string) { os.WriteFile(filepath.Join(home, "auth.json"), []byte(s), 0o600) }
 	write(`{"auth_mode":"apikey","OPENAI_API_KEY":"` + testkit.EnvCanary + `"}`)
-	if _, _, ok := readAccount(home); ok {
+	if _, _, _, ok := readAccount(home); ok {
 		t.Error("API key login accepted")
 	}
 	write(strings.Replace(testkit.CodexAuthJSON("business"), `"OPENAI_API_KEY":null`, `"OPENAI_API_KEY":"sk-x"`, 1))
-	if _, _, ok := readAccount(home); ok {
+	if _, _, _, ok := readAccount(home); ok {
 		t.Error("ChatGPT login with an API key accepted")
 	}
 	write(testkit.CodexAuthJSON("Business Plan"))
-	if plan, acct, ok := readAccount(home); !ok || plan != "" || acct != testkit.CodexAccountID {
+	if plan, acct, _, ok := readAccount(home); !ok || plan != "" || acct != testkit.CodexAccountID {
 		t.Errorf("got %q %q %v", plan, acct, ok)
 	}
 }

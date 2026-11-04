@@ -1,7 +1,7 @@
 // Package fakerelay is a local stand-in for the Firmary relay, for tests and development. It listens on loopback
-// only, verifies the Link's challenge signature, computes the pairing code server-side, offers a confirmed binding
-// and pairs only when the Link accepts it, mints turn tickets with a throwaway key, and records what the Link
-// sends.
+// only, verifies the Link's challenge signature, pairs by a code it issued (pairing v2: Issue, then pairing_claimed)
+// or one it computes from the nonces (v1), offers a confirmed binding and pairs only when the Link accepts it, mints
+// turn tickets with a throwaway key, and records what the Link sends.
 package fakerelay
 
 import (
@@ -10,6 +10,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -49,10 +50,12 @@ type Relay struct {
 	// AutoConfirm pairs a pending device at once, as if the person confirmed the code.
 	AutoConfirm bool
 
-	Codes   chan string
-	Answers chan string // pairing_accept or pairing_decline, as the Link answered an offer
-	Hellos  chan protocol.Hello
-	Events  chan protocol.EventMsg
+	Codes       chan string // the pending code of each pairing: issued (v2) or computed (v1)
+	Reveals     chan protocol.PairingReveal
+	Answers     chan string // pairing_accept or pairing_decline, as the Link answered an offer
+	Hellos      chan protocol.Hello
+	Events      chan protocol.EventMsg
+	SigninSteps chan protocol.SigninStep
 
 	srv *http.Server
 	ln  net.Listener
@@ -60,11 +63,49 @@ type Relay struct {
 
 	mu       sync.Mutex
 	devices  map[string]Device // base64url public key -> device
-	pending  map[string]chan Device
+	pending  map[string]*pend  // pending code -> the connection waiting for it to be confirmed
+	issued   map[string]issued // pairing v2: codes shown in "Firmary", not yet claimed
 	conn     *websocket.Conn
 	wmu      sync.Mutex
 	current  *Device
 	Connects int
+}
+
+// pend is a connection waiting for its code to be confirmed, and the names the binding is offered in.
+type pend struct {
+	ch           chan Device
+	person, firm string
+}
+
+// issued is a code Firmary showed a person (pairing v2).
+type issued struct {
+	person, firm string
+	expires      time.Time
+}
+
+// CodeTTL is how long an issued code lives.
+const CodeTTL = 10 * time.Minute
+
+// Issue makes a pairing code for a person and firm, as Firmary's "Show a pairing code" does (pairing v2).
+func (r *Relay) Issue(personName, firmName string) string {
+	b := make([]byte, 5)
+	rand.Read(b)
+	s := base32.NewEncoding("0123456789ABCDEFGHJKMNPQRSTVWXYZ").WithPadding(base32.NoPadding).EncodeToString(b)
+	code := s[:4] + "-" + s[4:]
+	r.mu.Lock()
+	r.issued[code] = issued{person: personName, firm: firmName, expires: time.Now().Add(CodeTTL)}
+	r.mu.Unlock()
+	return code
+}
+
+// Expire ends an issued code's life now.
+func (r *Relay) Expire(code string) {
+	r.mu.Lock()
+	if i, ok := r.issued[code]; ok {
+		i.expires = time.Now().Add(-time.Second)
+		r.issued[code] = i
+	}
+	r.mu.Unlock()
 }
 
 // Start listens on addr, which must be a loopback address such as "127.0.0.1:0".
@@ -83,8 +124,9 @@ func Start(addr string) (*Relay, error) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	r := &Relay{
 		URL: "ws://" + ln.Addr().String() + "/", TicketKey: priv, TicketPub: pub,
-		Codes: make(chan string, 64), Answers: make(chan string, 64), Hellos: make(chan protocol.Hello, 64), Events: make(chan protocol.EventMsg, 1024),
-		ln: ln, devices: map[string]Device{}, pending: map[string]chan Device{},
+		Codes: make(chan string, 64), Reveals: make(chan protocol.PairingReveal, 64), Answers: make(chan string, 64),
+		Hellos: make(chan protocol.Hello, 64), Events: make(chan protocol.EventMsg, 1024), SigninSteps: make(chan protocol.SigninStep, 64),
+		ln: ln, devices: map[string]Device{}, pending: map[string]*pend{}, issued: map[string]issued{},
 	}
 	r.srv = &http.Server{Handler: http.HandlerFunc(r.serve), ReadHeaderTimeout: 5 * time.Second}
 	go r.srv.Serve(ln)
@@ -177,10 +219,32 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 			c.WriteJSON(protocol.RelayError{Type: protocol.TypeError, Code: "bad_pairing_reveal"})
 			return
 		}
+		r.Reveals <- reveal
+		p := &pend{ch: make(chan Device, 1), person: UserName, firm: FirmName}
 		code := pairing.Code(pub, relayNonce, helperNonce)
-		confirmed := make(chan Device, 1)
+		if reveal.Code != "" {
+			// Pairing v2: the code must be one Firmary issued, live, and it is used up by this claim.
+			code = reveal.Code
+			r.mu.Lock()
+			is, ok := r.issued[code]
+			delete(r.issued, code)
+			r.mu.Unlock()
+			switch {
+			case !ok:
+				c.WriteJSON(protocol.RelayError{Type: protocol.TypeError, Code: "pairing_code_not_found"})
+				return
+			case time.Now().After(is.expires):
+				c.WriteJSON(protocol.RelayError{Type: protocol.TypeError, Code: "pairing_code_expired"})
+				return
+			}
+			p.person, p.firm = is.person, is.firm
+			if c.WriteJSON(protocol.PairingClaimed{Type: protocol.TypePairingClaimed, FirmName: is.firm, PersonName: is.person}) != nil {
+				return
+			}
+		}
+		confirmed := p.ch
 		r.mu.Lock()
-		r.pending[code] = confirmed
+		r.pending[code] = p
 		r.mu.Unlock()
 		// The pending code lives only as long as this connection.
 		defer func() {
@@ -273,19 +337,32 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 			var e protocol.EventMsg
 			json.Unmarshal(b, &e)
 			r.Events <- e
+		case protocol.TypeSigninStep:
+			var st protocol.SigninStep
+			json.Unmarshal(b, &st)
+			r.SigninSteps <- st
 		}
 	}
 }
 
 // Confirm confirms a pending pairing by its code, as the person would in Firmary. The Link is then offered the
-// binding.
+// binding, naming the person and firm the code was issued for (v2) or the fake's own (v1).
 func (r *Relay) Confirm(code string) bool {
 	r.mu.Lock()
-	ch, ok := r.pending[code]
+	p, ok := r.pending[code]
+	r.mu.Unlock()
+	return ok && r.ConfirmAs(code, p.person, p.firm)
+}
+
+// ConfirmAs confirms a pending pairing but offers the binding in other names, as a relay that binds the computer to
+// someone other than who asked for the code would.
+func (r *Relay) ConfirmAs(code, personName, firmName string) bool {
+	r.mu.Lock()
+	p, ok := r.pending[code]
 	delete(r.pending, code)
 	r.mu.Unlock()
 	if ok {
-		ch <- Device{DeviceID: newID(), UserID: newID(), FirmID: newID(), UserName: UserName, FirmName: FirmName}
+		p.ch <- Device{DeviceID: newID(), UserID: newID(), FirmID: newID(), UserName: personName, FirmName: firmName}
 	}
 	return ok
 }
@@ -364,4 +441,11 @@ func (r *Relay) Forget() {
 	r.mu.Lock()
 	r.devices = map[string]Device{}
 	r.mu.Unlock()
+}
+
+// ConnectCount is how many authenticated connections the relay has seen.
+func (r *Relay) ConnectCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Connects
 }

@@ -92,7 +92,7 @@ func (h *Helper) Hello(ctx context.Context, rec pairing.Record) protocol.Hello {
 		}
 		infos = append(infos, protocol.ProviderInfo{
 			ID: p.Driver.ID(), PinnedVersion: st.Installed, SignedIn: st.SignedIn, AccountType: st.AccountType,
-			OrgID: st.OrgID, Managed: st.Managed,
+			OrgID: st.OrgID, AccountEmail: st.AccountEmail, Managed: st.Managed,
 		})
 	}
 	hello := protocol.Hello{

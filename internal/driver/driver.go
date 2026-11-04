@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/Firmary/bridge/internal/launch"
 	"github.com/Firmary/bridge/internal/protocol"
@@ -29,13 +31,31 @@ type Profile struct {
 	Dir    string
 }
 
-// ProviderStatus is what the Link may report about a provider login. It never includes the account email.
+// ProviderStatus is what the Link may report about a provider login.
 type ProviderStatus struct {
 	Installed   string // installed pinned version, "" if not installed
 	SignedIn    bool   // signed in with a subscription plan (not an API key)
 	AccountType string // provider's plan type, e.g. "pro", "max", "team", "enterprise"
 	OrgID       string // provider organisation id (a UUID), if any
-	Managed     bool   // a machine-wide managed settings source for the provider was found (IT policy applies)
+	// AccountEmail is the signed-in account's email as the provider reports it (CleanEmail), for the paired person's
+	// own Connections page in Firmary. Never logged; "" when unknown.
+	AccountEmail string
+	Managed      bool // a machine-wide managed settings source for the provider was found (IT policy applies)
+}
+
+// CleanEmail returns a provider-reported email if it looks like one hello may carry (3 to 320 characters, one @, no
+// spaces or control characters), else "".
+func CleanEmail(s string) string {
+	if len(s) < 3 || len(s) > 320 || !utf8.ValidString(s) || strings.Count(s, "@") != 1 || strings.HasPrefix(s, "@") ||
+		strings.HasSuffix(s, "@") {
+		return ""
+	}
+	for _, r := range s {
+		if unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
+			return ""
+		}
+	}
+	return s
 }
 
 // Turn is what a driver runs: already checked against its ticket.
