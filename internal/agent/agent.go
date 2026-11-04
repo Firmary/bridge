@@ -101,9 +101,9 @@ type Agent struct {
 	refresh   chan struct{}
 	mu        sync.Mutex
 	connects  int
-	client    *relay.Client   // the running connection, once Run started it
-	code      string          // a pairing code given before Run
-	signingIn map[string]bool // provider sign-ins the relay asked for, running now
+	client    *relay.Client             // the running connection, once Run started it
+	code      string                    // a pairing code given before Run
+	signingIn map[string]*pendingSignIn // provider sign-ins the relay asked for, running now
 }
 
 // decodeKey decodes a base64 public key in standard or URL alphabet, padded or not (a --ticket-key-file from the
@@ -414,6 +414,12 @@ func (a *Agent) Unpair() error {
 	return nil
 }
 
+// pendingSignIn is a provider sign-in the relay asked for: the latest connection's send, and the step once known.
+type pendingSignIn struct {
+	send func(protocol.SigninStep)
+	last *protocol.SigninStep
+}
+
 // relaySignIn runs the provider sign-in Firmary asked for over the relay, in the paired person's profile, and passes
 // the provider's link (and code) to Firmary. The desktop app opens the browser here; a server uses the provider's
 // device link, opened on any browser. Claude Code has no device link (its server sign-in needs the code Anthropic's
@@ -440,14 +446,22 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 	}
 	a.mu.Lock()
 	if a.signingIn == nil {
-		a.signingIn = map[string]bool{}
+		a.signingIn = map[string]*pendingSignIn{}
 	}
-	busy := a.signingIn[p.ID]
-	a.signingIn[p.ID] = true
+	if s := a.signingIn[p.ID]; s != nil {
+		// One sign-in per provider at a time. Firmary asking again (after a reconnect, say) gets its link on the
+		// connection that asked, now if it is known, else when the provider prints it.
+		s.send = step
+		last := s.last
+		a.mu.Unlock()
+		if last != nil {
+			step(*last)
+		}
+		return
+	}
+	s := &pendingSignIn{send: step}
+	a.signingIn[p.ID] = s
 	a.mu.Unlock()
-	if busy {
-		return // one sign-in per provider at a time; Firmary already has its link
-	}
 	defer func() {
 		a.mu.Lock()
 		delete(a.signingIn, p.ID)
@@ -461,8 +475,13 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 		a.Log.Log(logx.ProviderSignIn, logx.Fields{Provider: p.ID, Reason: "ensure_failed"})
 		return
 	}
-	err := d.SignIn(ctx, helper.Profile(a.EnvDir, rec, p.ID), kind, driver.SignInUI{Step: func(s driver.SignInStep) {
-		step(protocol.SigninStep{Kind: s.Kind, URL: s.URL, UserCode: s.UserCode})
+	err := d.SignIn(ctx, helper.Profile(a.EnvDir, rec, p.ID), kind, driver.SignInUI{Step: func(st driver.SignInStep) {
+		ps := protocol.SigninStep{Kind: st.Kind, URL: st.URL, UserCode: st.UserCode}
+		a.mu.Lock()
+		s.last = &ps
+		send := s.send
+		a.mu.Unlock()
+		send(ps)
 	}})
 	f := logx.Fields{Provider: p.ID, Reason: "relay_ok"}
 	var fail *driver.Failure

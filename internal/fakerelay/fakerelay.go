@@ -367,6 +367,14 @@ func (r *Relay) ConfirmAs(code, personName, firmName string) bool {
 	return ok
 }
 
+// Pending reports whether a connection still waits for this code to be confirmed.
+func (r *Relay) Pending(code string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.pending[code]
+	return ok
+}
+
 // Current returns the device on the live connection.
 func (r *Relay) Current() (Device, bool) {
 	r.mu.Lock()
