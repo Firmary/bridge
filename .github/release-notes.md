@@ -1,30 +1,32 @@
-**Beta and unsigned.** This is a pre-release build of the Firmary Helper for testing. It is not signed or notarized
-yet, so your computer will warn before it runs. A signed build is coming.
+**Beta and unsigned.** Firmary Link connects your own Claude or ChatGPT plan to Firmary. This build isn't signed by
+Apple or Microsoft yet, so your computer warns the first time you open it. A signed build is coming.
 
-**Pairing in Firmary is not open yet.** The relay's public listener stays closed until Firmary's pairing screen
-ships. This build is ready to connect, but it cannot pair until then.
+## Install
 
-## Opening it despite the warning
+- **Mac:** open `Firmary-Link.dmg` and drag **Firmary Link** to **Applications**, then open it. The first time, macOS
+  blocks it: open **System Settings › Privacy & Security**, scroll down and click **Open Anyway**.
+- **Windows:** run `Firmary-Link-Setup.exe`. If SmartScreen says "Windows protected your PC", click **More info ›
+  Run anyway**.
+- **Linux desktop:** install the `.deb` for your computer (`amd64` for most, `arm64` for Arm).
+- **Linux server or VPS:** run this one line, then follow what it says:
 
-- **macOS** (Gatekeeper says it can't check the app): in the folder you extracted, run
-  `xattr -d com.apple.quarantine ./firmary-helper`, or right-click `firmary-helper` in Finder and choose **Open**.
-- **Windows** (SmartScreen says "Windows protected your PC"): click **More info → Run anyway**.
-- **Linux**: no warning.
+  ```sh
+  curl -fsSL https://github.com/Firmary/bridge/releases/latest/download/install.sh | sh
+  ```
 
-## Check the download
+Once installed, Firmary Link updates itself quietly from this release's signed `manifest.json`.
 
-Compare the archive's checksum with `SHA256SUMS`:
+## Files
 
-- macOS: `shasum -a 256 -c SHA256SUMS --ignore-missing`
-- Linux: `sha256sum -c SHA256SUMS --ignore-missing`
-- Windows (PowerShell): `Get-FileHash .\firmary-helper_<version>_windows_amd64.zip` and compare with the line in
-  `SHA256SUMS`.
+| File                                                                                  | For                                                        |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `Firmary-Link.dmg`                                                                    | Mac (Apple silicon and Intel)                              |
+| `Firmary-Link-Setup.exe`                                                              | Windows 10 and 11 (x64 and Arm)                            |
+| `firmary-link_<version>_amd64.deb`, `firmary-link_<version>_arm64.deb`                | Linux desktop (Debian, Ubuntu)                             |
+| `install.sh`, `firmary-link-linux-x64.tar.gz`, `firmary-link-linux-arm64.tar.gz`      | Linux server; the tarballs are what `install.sh` downloads |
+| `firmary-link-darwin-universal`, `firmary-link-linux-*`, `firmary-link-windows-*.exe` | The app on its own, used by updates                        |
+| `manifest.json`, `manifest.json.sig`                                                  | The signed update manifest                                 |
+| `checksums.txt`                                                                       | SHA-256 of every other file                                |
 
-## Run it
-
-In a terminal, in the extracted folder: `./firmary-helper run` (Windows: `.\firmary-helper.exe run`).
-`./firmary-helper version` prints the version. The first run downloads the Helper's own pinned copy of Claude Code
-(about 290 MB).
-
-When pairing opens: the Helper shows a code; check that Firmary shows the same code and confirm there. The Helper
-then names the person and firm and asks you to type `yes` on the computer. Anything else declines.
+To check a download: `sha256sum -c checksums.txt --ignore-missing` (Mac: `shasum -a 256 -c checksums.txt
+--ignore-missing`). `install.sh` checks its download for you.
