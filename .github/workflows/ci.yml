@@ -42,7 +42,7 @@ jobs:
     timeout-minutes: 15
     env:
       CGO_ENABLED: "1"
-      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
