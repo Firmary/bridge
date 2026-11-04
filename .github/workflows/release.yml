@@ -62,7 +62,7 @@ jobs:
     timeout-minutes: 30
     env:
       VERSION: ${{ needs.check.outputs.version }}
-      MACOSX_DEPLOYMENT_TARGET: "11.0" # matches LSMinimumSystemVersion in Info.plist
+      MACOSX_DEPLOYMENT_TARGET: "13.0" # matches LSMinimumSystemVersion in Info.plist
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -82,7 +82,7 @@ jobs:
           CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 CC="clang -arch x86_64" \
             go build -trimpath -ldflags "$ldflags" -o build/firmary-link-amd64 ./cmd/firmary-link
           lipo -create -output dist/firmary-link-darwin-universal build/firmary-link-arm64 build/firmary-link-amd64
-          lipo -verify_arch dist/firmary-link-darwin-universal arm64 x86_64
+          lipo dist/firmary-link-darwin-universal -verify_arch arm64 x86_64
           # Ad-hoc only: this is the raw binary the updater installs.
           codesign --force --sign - --identifier app.firmary.link dist/firmary-link-darwin-universal
           codesign --verify --verbose=2 dist/firmary-link-darwin-universal

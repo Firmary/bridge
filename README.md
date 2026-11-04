@@ -22,7 +22,7 @@ releases, so `https://github.com/Firmary/bridge/releases/latest/download/<file>`
 
 | File                                                                   | For                                         |
 | ---------------------------------------------------------------------- | ------------------------------------------- |
-| `Firmary-Link.dmg`                                                     | Mac (Apple silicon and Intel)               |
+| `Firmary-Link.dmg`                                                     | Mac (Apple silicon and Intel), macOS 13+    |
 | `Firmary-Link-Setup.exe`                                               | Windows 10 and 11 (x64 and Arm), per user   |
 | `firmary-link_<version>_amd64.deb`, `firmary-link_<version>_arm64.deb` | Linux desktop (Debian, Ubuntu)              |
 | `install.sh`, `firmary-link-linux-x64.tar.gz`, `-linux-arm64.tar.gz`   | Linux server or VPS                         |

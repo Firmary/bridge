@@ -20,7 +20,7 @@ Once installed, Firmary Link updates itself quietly from this release's signed `
 
 | File                                                                                  | For                                                        |
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `Firmary-Link.dmg`                                                                    | Mac (Apple silicon and Intel)                              |
+| `Firmary-Link.dmg`                                                                    | Mac (Apple silicon and Intel), macOS 13 or later          |
 | `Firmary-Link-Setup.exe`                                                              | Windows 10 and 11 (x64 and Arm)                            |
 | `firmary-link_<version>_amd64.deb`, `firmary-link_<version>_arm64.deb`                | Linux desktop (Debian, Ubuntu)                             |
 | `install.sh`, `firmary-link-linux-x64.tar.gz`, `firmary-link-linux-arm64.tar.gz`      | Linux server; the tarballs are what `install.sh` downloads |

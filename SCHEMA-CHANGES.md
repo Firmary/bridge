@@ -337,6 +337,10 @@ No message, field or context string changed: the wire contract keeps its `helper
 - A ticket's `adapter` picks the provider app: `helper-claude-code` runs on Claude Code, `helper-codex` on Codex. The
   Codex driver reports its ChatGPT plan type as `accountType` and the ChatGPT account (workspace) id as `orgId`; the
   business plan types per provider match `BUSINESS_ACCOUNT_TYPES` in `devices.ts`.
+- `pairing_reveal` now carries the optional `device` the schema already has (`HelperPairingDevice`): `name` (macOS
+  ComputerName, Windows COMPUTERNAME, otherwise the hostname; control characters dropped, spaces collapsed, at most 64
+  UTF-16 units, left out when empty), `os` and `arch`. It is sent only when pairing, so a computer paired before
+  this shows no name until it pairs again.
 - New `error` pattern: `policy` / `adapter_disabled`, when the signed update manifest's `disabledAdapters` pauses
   the ticket's adapter (a Link that was offline when the server-side kill switch flipped). Don't retry.
 - The update manifest (`update-manifest.ts`) is published by this repo's release workflow for now, as a release
