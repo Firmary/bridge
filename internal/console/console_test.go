@@ -9,7 +9,7 @@ import (
 )
 
 // The server transcript: the design's "Always-on server" screen, changed to the secure pairing flow. The code is
-// one the Helper derived (the shared test vector), not one it was given, and "Paired to" names the person.
+// one the Link derived (the shared test vector), not one it was given, and "Paired to" names the person.
 func TestServerTranscript(t *testing.T) {
 	var b bytes.Buffer
 	p := &Printer{W: &b, Terminal: true}
@@ -19,7 +19,7 @@ func TestServerTranscript(t *testing.T) {
 	p.PairingCode("WFWC-XCK4")
 	p.Paired("Maria Okafor", "Harlow & Pike CPA")
 
-	want := "Firmary Helper 1.4.2 for Linux (x86_64)\n" +
+	want := "Firmary Link 1.4.2 for Linux (x86_64)\n" +
 		"ok  Claude Code is ready\n" +
 		"ok  Reached Firmary (outgoing only, nothing to open)\n" +
 		"\n" +
@@ -30,7 +30,7 @@ func TestServerTranscript(t *testing.T) {
 		"Waiting for you to confirm in Firmary…\n" +
 		"ok  Paired to Maria Okafor · Harlow & Pike CPA\n" +
 		"This computer now runs only requests Firmary signs for Maria Okafor.\n" +
-		"Not you? Stop the Firmary Helper now.\n"
+		"Not you? Stop the Firmary Link now.\n"
 	if b.String() != want {
 		t.Fatalf("transcript:\n%s\nwant:\n%s", b.String(), want)
 	}
@@ -66,7 +66,7 @@ func TestCodeAndNamesOnlyOnATerminal(t *testing.T) {
 	p.PairingCode("YM1S-0VXJ")
 	p.Paired("Maria Okafor", "Harlow & Pike CPA")
 	want := "This computer isn't paired yet. The pairing code is shown only in a terminal, never in system logs.\n" +
-		"To pair, stop the Firmary Helper and start it in a terminal.\n" +
+		"To pair, stop the Firmary Link and start it in a terminal.\n" +
 		"ok  Paired (names are shown only in a terminal, never in system logs)\n"
 	if b.String() != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", b.String(), want)
@@ -127,7 +127,7 @@ func TestConfirmPairing(t *testing.T) {
 		}
 	}
 	want := "Someone paired this computer in Firmary. It pairs only after a yes typed on this computer, and the names " +
-		"are shown only in a terminal.\nTo answer, stop the Firmary Helper and start it in a terminal.\n"
+		"are shown only in a terminal.\nTo answer, stop the Firmary Link and start it in a terminal.\n"
 	if b.String() != want {
 		t.Fatalf("off a terminal printed:\n%s\nwant:\n%s", b.String(), want)
 	}
@@ -135,8 +135,8 @@ func TestConfirmPairing(t *testing.T) {
 
 func TestBannerNamesEachDesktop(t *testing.T) {
 	for _, c := range []struct{ goos, goarch, want string }{
-		{"darwin", "arm64", "Firmary Helper 1.0.0 for macOS (arm64)\n"},
-		{"windows", "amd64", "Firmary Helper 1.0.0 for Windows (x86_64)\n"},
+		{"darwin", "arm64", "Firmary Link 1.0.0 for macOS (arm64)\n"},
+		{"windows", "amd64", "Firmary Link 1.0.0 for Windows (x86_64)\n"},
 	} {
 		var b bytes.Buffer
 		(&Printer{W: &b}).Banner("1.0.0", c.goos, c.goarch)
