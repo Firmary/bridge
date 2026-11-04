@@ -1,0 +1,69 @@
+{
+  "$comment": "Byte-exact recipes shared by the relay and the Firmary Helper (src/ai-relay/relay-crypto.ts; Helper protocol.PromptHash, devicekey.AuthPayload, pairing.Commit and pairing.Code at Helper commit 4800bb0). Values were computed by calling those Helper Go functions directly; the TypeScript implementation is tested against them. promptHash inputs are the decoded JSON string values of the `turn` fields: the Helper must decode `schema` as a string, not hash its raw JSON token. The first relay-to-helper `turn` fixture and the first ticket-claims fixture carry the matching whole-message case. Relay URLs are canonical (RelayUrl) and pass the Helper's relay.CheckURL. `testSeed` is a synthetic Ed25519 seed (bytes 0x01..0x20), never a real device key. Binary values are unpadded base64url; Ed25519 signatures are deterministic, so `signature` must match exactly.",
+  "promptHash": [
+    {
+      "name": "empty context, no schema",
+      "context": "",
+      "prompt": "Hello",
+      "promptHash": "739f5b942862331b55d84184e14e2a021fe0c09bba16538ecba8bd718c960d39"
+    },
+    {
+      "name": "context, prompt and structured-output schema",
+      "context": "Client: Example Co. Open requests: 2.",
+      "prompt": "Summarize the open requests.",
+      "schema": "{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}}",
+      "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64"
+    },
+    {
+      "name": "non-ASCII text hashes as UTF-8 bytes",
+      "context": "Café — 東京 €",
+      "prompt": "Résumé ✓",
+      "promptHash": "b215922b30f5e449fb2304694a3b5c78b5ac69cb2f72d2120b420105f9cc85ae"
+    },
+    {
+      "name": "moving bytes between fields changes the hash",
+      "context": "Client: Example Co. Open requests: 2.Summarize",
+      "prompt": " the open requests.",
+      "schema": "{\"type\":\"object\",\"properties\":{\"summary\":{\"type\":\"string\"}}}",
+      "promptHash": "165057da47e18ee517eaaed871b920b5541f6aa96ade09273b38ca315b540dc6"
+    }
+  ],
+  "auth": [
+    {
+      "name": "production relay, 32-byte nonce",
+      "testSeed": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA",
+      "relayUrl": "wss://relay.prod.firmary.app/",
+      "nonce": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8",
+      "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+      "payload": "firmary-helper-auth-v1\nwss://relay.prod.firmary.app/\nQEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8",
+      "signature": "Bsz0j9sZIiRe4WNq_GgKOepnw3OTgkCUbwDJpf8aTS4VCiniTNZ15GsAPFve_Zw1_BdYIaaHH8LvBDaagw1YBQ"
+    },
+    {
+      "name": "development relay, 48-byte nonce",
+      "testSeed": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA",
+      "relayUrl": "wss://relay.dev.firmary.app/",
+      "nonce": "kJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq-wsbKztLW2t7i5uru8vb6_",
+      "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+      "payload": "firmary-helper-auth-v1\nwss://relay.dev.firmary.app/\nkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq-wsbKztLW2t7i5uru8vb6_",
+      "signature": "qY3NJWfL6bCB-wN4kTDeEd510UPm1d_nXZUtk0zKs6ACbR5jcNs7cD3CV1mroZyg59eOIc7KoTrFkJVC6y-KBA"
+    }
+  ],
+  "pairing": [
+    {
+      "name": "fixed bytes (SCHEMA-CHANGES.md table)",
+      "publicKey": "ERERERERERERERERERERERERERERERERERERERERERE",
+      "helperNonce": "IiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiI",
+      "relayNonce": "MzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzM",
+      "pairingCommit": "uafKaukt90Y_UQFyZGVVcsEPnDaLe5WwDkNhf8GU724",
+      "pairingCode": "WFWC-XCK4"
+    },
+    {
+      "name": "test device key",
+      "publicKey": "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+      "helperNonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+      "relayNonce": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+      "pairingCommit": "H6RSpWsatUs1z-AQBRsmFsY8wWh8tg1_DbEAHdBsBic",
+      "pairingCode": "YM1S-0VXJ"
+    }
+  ]
+}

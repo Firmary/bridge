@@ -1,0 +1,431 @@
+{
+  "$comment": "Each valid document must parse. Each invalid document must fail, with an error at `path` (JSON Pointer). Synthetic values only. Signature, expiry, lifetime, replay, the `turnId` and `promptHash` match, the plan-type check and the D7 rule that a business plan type needs `providerOrgIds` are verifier checks, not schema checks. `path` is where the Zod parse reports the error; a JSON Schema validator may report a parent or union branch instead, so other implementations need only check pass or fail.",
+  "valid": [
+    {
+      "name": "interactive turn",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["pro", "max"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "interactive turn bound to the firm's provider organisation",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["team", "enterprise"],
+        "providerOrgIds": ["3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "personal schedule turn with extra standard claims",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2c",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-codex",
+        "model": "gpt-5-codex",
+        "pin": "0.165.0",
+        "trigger": {
+          "kind": "personal_schedule",
+          "automationId": "7e6d5c4b-3a29-4180-9f7e-6d5c4b3a2918",
+          "consentRevision": 2
+        },
+        "consentRevision": 3,
+        "maxOutputTokens": 4000,
+        "promptHash": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+        "accountTypes": ["plus", "pro"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120,
+        "jti": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2c"
+      }
+    },
+    {
+      "name": "turn bound to its launch profile (built-in profile vector)",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["pro", "max"],
+        "iat": 1793500000,
+        "exp": 1793500120,
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "server-side adapter in a relay ticket",
+      "path": "/adapter",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "anthropic-api",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "accountTypes": ["team", "enterprise"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "prompt hash that is not lower-case sha256 hex",
+      "path": "/promptHash",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08",
+        "accountTypes": ["team", "enterprise"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "missing expiry",
+      "path": "/exp",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "accountTypes": ["team", "enterprise"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000
+      }
+    },
+    {
+      "name": "personal schedule without its consent revision",
+      "path": "/trigger/consentRevision",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-codex",
+        "model": "gpt-5-codex",
+        "pin": "0.165.0",
+        "trigger": {
+          "kind": "personal_schedule",
+          "automationId": "7e6d5c4b-3a29-4180-9f7e-6d5c4b3a2918"
+        },
+        "maxOutputTokens": 4000,
+        "promptHash": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+        "accountTypes": ["plus", "pro", "team", "enterprise"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "fractional issued-at time",
+      "path": "/iat",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "accountTypes": ["team", "enterprise"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000.5,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "no allowed account types",
+      "path": "/accountTypes",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "accountTypes": [],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "session token in place of the session id",
+      "path": "/trigger/sessionId",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "Zx9QeB3kLmN0pR7sT2uV5wY8aC1dF4gH"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "accountTypes": ["team", "enterprise"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "account type that is free text, not a plan name",
+      "path": "/accountTypes/0",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "accountTypes": ["Team Plan"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "empty provider organisation list",
+      "path": "/providerOrgIds",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["team", "enterprise"],
+        "providerOrgIds": [],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "provider organisation given by display name",
+      "path": "/providerOrgIds/0",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["team", "enterprise"],
+        "providerOrgIds": ["Example Accounting LLC"],
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "p0.f0.u0.t0",
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    },
+    {
+      "name": "profile hash that is not lower-case sha256 hex",
+      "path": "/profileHash",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["pro", "max"],
+        "iat": 1793500000,
+        "exp": 1793500120,
+        "profileHash": "3585A9A8415EC7439360054731C4E59D38F09720ADFF50CD730F12AA47DE0A5E",
+        "profileVersion": "p0.f0.u0.t0"
+      }
+    },
+    {
+      "name": "profile version that is free text",
+      "path": "/profileVersion",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["pro", "max"],
+        "iat": 1793500000,
+        "exp": 1793500120,
+        "profileHash": "3585a9a8415ec7439360054731c4e59d38f09720adff50cd730f12aa47de0a5e",
+        "profileVersion": "Platform v12, firm v4"
+      }
+    },
+    {
+      "name": "ticket without its launch profile claims",
+      "path": "/profileHash",
+      "document": {
+        "ticketId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f",
+        "userId": "1d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        "firmId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+        "conversationId": "4c3b2a19-0f8e-4d7c-9b6a-5f4e3d2c1b0a",
+        "adapter": "helper-claude-code",
+        "model": "claude-sonnet-4-5",
+        "pin": "2.1.31",
+        "trigger": {
+          "kind": "interactive",
+          "sessionId": "5a4b3c2d-1e0f-4a9b-8c7d-6e5f4a3b2c1d"
+        },
+        "maxOutputTokens": 8000,
+        "promptHash": "5b6946985db6c2451bea2ebcd4b3a7a896df5d9b2c09a235deabfc68ceef1e64",
+        "accountTypes": ["pro", "max"],
+        "iat": 1793500000,
+        "exp": 1793500120
+      }
+    }
+  ]
+}
