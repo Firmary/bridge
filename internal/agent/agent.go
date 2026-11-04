@@ -359,7 +359,7 @@ func (a *Agent) Run(ctx context.Context, h Hooks) error {
 	go a.watchRefresh(ctx, refresh)
 	var committed sync.Once
 	client, err := relay.New(relay.Config{
-		URL: url, Env: a.Opts.EnvName, HelperVersion: a.Opts.Version, Log: a.Log, Handler: a.Helper,
+		URL: url, Env: a.Opts.EnvName, HelperVersion: a.Opts.Version, Device: PairingDevice(), Log: a.Log, Handler: a.Helper,
 		KeyPath: a.KeyPath(), PairingPath: a.PairingPath(),
 		ShowConnected:   h.Reached,
 		ShowPairingCode: h.PairingCode,
