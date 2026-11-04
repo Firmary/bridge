@@ -397,6 +397,7 @@ func (a *Agent) CancelPairing() {
 // Unpair removes this computer's pairing: the pairing, its names and the device key are deleted here, and the Link
 // waits for a new code. Without a running connection (the unpair command) it deletes the files itself.
 func (a *Agent) Unpair() error {
+	a.cancelSignIns()
 	a.mu.Lock()
 	c := a.client
 	a.mu.Unlock()
@@ -414,10 +415,24 @@ func (a *Agent) Unpair() error {
 	return nil
 }
 
-// pendingSignIn is a provider sign-in the relay asked for: the latest connection's send, and the step once known.
+// pendingSignIn is a provider sign-in the relay asked for: the pairing it signs in for, the latest connection's send,
+// and the step once known.
 type pendingSignIn struct {
-	send func(protocol.SigninStep)
-	last *protocol.SigninStep
+	rec    pairing.Record
+	cancel context.CancelFunc
+	send   func(protocol.SigninStep)
+	last   *protocol.SigninStep
+}
+
+// cancelSignIns stops every provider sign-in still running: they belong to a pairing that just ended, and their link
+// or code must never reach whoever pairs next.
+func (a *Agent) cancelSignIns() {
+	a.mu.Lock()
+	for id, s := range a.signingIn {
+		s.cancel()
+		delete(a.signingIn, id)
+	}
+	a.mu.Unlock()
 }
 
 // relaySignIn runs the provider sign-in Firmary asked for over the relay, in the paired person's profile, and passes
@@ -448,6 +463,12 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 	if a.signingIn == nil {
 		a.signingIn = map[string]*pendingSignIn{}
 	}
+	if s := a.signingIn[p.ID]; s != nil && s.rec != rec {
+		// A sign-in for an earlier pairing: stop it, so its link never reaches this person and its sign-in never
+		// lands in the earlier person's profile.
+		s.cancel()
+		delete(a.signingIn, p.ID)
+	}
 	if s := a.signingIn[p.ID]; s != nil {
 		// One sign-in per provider at a time. Firmary asking again (after a reconnect, say) gets its link on the
 		// connection that asked, now if it is known, else when the provider prints it.
@@ -459,12 +480,16 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 		}
 		return
 	}
-	s := &pendingSignIn{send: step}
+	ctx, cancel := context.WithCancel(ctx)
+	s := &pendingSignIn{rec: rec, cancel: cancel, send: step}
 	a.signingIn[p.ID] = s
 	a.mu.Unlock()
 	defer func() {
+		cancel()
 		a.mu.Lock()
-		delete(a.signingIn, p.ID)
+		if a.signingIn[p.ID] == s {
+			delete(a.signingIn, p.ID)
+		}
 		a.mu.Unlock()
 		a.RefreshHello()
 		if done != nil {
@@ -499,17 +524,16 @@ func (a *Agent) Run(ctx context.Context, h Hooks) error {
 	refresh := make(chan struct{}, 1)
 	go a.watchRefresh(ctx, refresh)
 	var committed sync.Once
+	// The pending code moves into the client and the client becomes the one SetCode and CancelPairing reach in one
+	// step, so a code typed while the Link starts is never stranded.
 	a.mu.Lock()
-	code := a.code
-	a.code = ""
-	a.mu.Unlock()
 	client, err := relay.New(relay.Config{
 		URL: url, Env: a.Opts.EnvName, HelperVersion: a.Opts.Version, Device: PairingDevice(a.Opts.Kind), Log: a.Log,
 		Handler: a.Helper, KeyPath: a.KeyPath(), PairingPath: a.PairingPath(),
 		ShowConnected: h.Reached,
 		// Pairing v2 only: the Link pairs with the code Firmary shows, and never shows one of its own.
 		TypedCode:        true,
-		Code:             code,
+		Code:             a.code,
 		ShowNeedsCode:    h.NeedsCode,
 		ShowClaimed:      h.Claimed,
 		ShowCodeRejected: h.CodeRejected,
@@ -532,6 +556,7 @@ func (a *Agent) Run(ctx context.Context, h Hooks) error {
 		},
 		ShowOffline: h.Offline,
 		ShowUnpaired: func() {
+			a.cancelSignIns()
 			a.ForgetNames()
 			if h.Unpaired != nil {
 				h.Unpaired()
@@ -539,12 +564,13 @@ func (a *Agent) Run(ctx context.Context, h Hooks) error {
 		},
 		Refresh: refresh,
 	})
+	if err == nil {
+		a.code, a.client = "", client
+	}
+	a.mu.Unlock()
 	if err != nil {
 		return err
 	}
-	a.mu.Lock()
-	a.client = client
-	a.mu.Unlock()
 	defer func() {
 		a.mu.Lock()
 		a.client = nil
