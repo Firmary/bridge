@@ -87,6 +87,15 @@ type PairingPending struct {
 type PairingReveal struct {
 	Type  string `json:"type"`
 	Nonce string `json:"nonce"`
+	// Device is the computer's own claim about itself, shown to the person before they confirm (optional).
+	Device *PairingDevice `json:"device,omitempty"`
+}
+
+// PairingDevice is pairing_reveal's device: the computer's name (1 to 64 characters), os and arch.
+type PairingDevice struct {
+	Name string `json:"name,omitempty"`
+	OS   string `json:"os,omitempty"`
+	Arch string `json:"arch,omitempty"`
 }
 
 // PairingOffer: a person confirmed this key in Firmary (or confirmed it earlier and this computer never answered).

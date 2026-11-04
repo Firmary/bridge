@@ -118,7 +118,6 @@ func roundTrip[T any](t *testing.T, doc json.RawMessage) any {
 var unmodelled = map[string]bool{
 	"reconnectReason": true, "updateFailure": true, // hello: self-update arrives in a later slice
 	"channel": true, // the stream-event fixture's unknown field from a newer sender
-	"device":  true, // pairing_reveal: the optional computer details the Link doesn't send yet
 	"jti":     true, // a standard ticket claim the verifier doesn't need
 }
 

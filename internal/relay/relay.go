@@ -40,6 +40,7 @@ type Config struct {
 	KeyPath         string
 	PairingPath     string
 	HelperVersion   string
+	Device          *protocol.PairingDevice // sent in pairing_reveal; may be nil
 	Log             *logx.Logger
 	Handler         TurnHandler
 	ShowConnected   func()                          // tells the person the relay was reached; may be nil
@@ -443,7 +444,7 @@ func (c *Client) authenticate(ctx context.Context, cn *conn) (pairing.Record, er
 				c.cfg.Log.Log(logx.PairingPending, logx.Fields{})
 			}
 			if err := cn.send(protocol.PairingReveal{Type: protocol.TypePairingReveal,
-				Nonce: base64.RawURLEncoding.EncodeToString(helperNonce)}); err != nil {
+				Nonce: base64.RawURLEncoding.EncodeToString(helperNonce), Device: c.cfg.Device}); err != nil {
 				return none, err
 			}
 			// No read deadline while the person confirms the code; pings keep the connection checked.
