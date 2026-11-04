@@ -276,13 +276,22 @@ func (h *Helper) HandleTurn(ctx context.Context, rec pairing.Record, t protocol.
 	rctx, cancel := context.WithTimeout(ctx, timeout)
 	h.running[c.TicketID] = cancel
 	h.mu.Unlock()
+	// The slot is freed before the terminal event goes out: the relay may send the next turn as soon as it sees it,
+	// and that turn must not be refused as busy.
+	var freeOnce sync.Once
+	free := func() {
+		freeOnce.Do(func() {
+			h.mu.Lock()
+			delete(h.running, c.TicketID)
+			h.mu.Unlock()
+		})
+	}
 	defer func() {
-		h.mu.Lock()
-		delete(h.running, c.TicketID)
-		h.mu.Unlock()
+		free()
 		cancel()
 	}()
 	if class, reason := h.checkProvider(rctx, rec, drv, c); reason != "" {
+		free()
 		reject(c, class, reason)
 		return
 	}
@@ -305,6 +314,9 @@ func (h *Helper) HandleTurn(ctx context.Context, rec pairing.Record, t protocol.
 			if e.Tokens != nil {
 				done.InputTokens, done.OutputTokens = e.Tokens.Input, e.Tokens.Output
 			}
+		}
+		if e.T == protocol.EvDone || e.T == protocol.EvError {
+			free()
 		}
 		emit(e)
 	})
