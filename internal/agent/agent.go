@@ -81,6 +81,9 @@ type Options struct {
 	Ring    string
 	// Updates turns on the silent updater (release builds on prod only).
 	Updates bool
+	// Kind is how this Link runs: protocol.KindDesktop (the app on a person's computer) or KindServer (the always-on
+	// headless service). It goes in pairing_reveal and hello.
+	Kind string
 }
 
 // Agent is one Link.
@@ -94,10 +97,13 @@ type Agent struct {
 	Helper  *helper.Helper
 	Updater *update.Updater
 
-	keys     []ed25519.PublicKey
-	refresh  chan struct{}
-	mu       sync.Mutex
-	connects int
+	keys      []ed25519.PublicKey
+	refresh   chan struct{}
+	mu        sync.Mutex
+	connects  int
+	client    *relay.Client             // the running connection, once Run started it
+	code      string                    // a pairing code given before Run
+	signingIn map[string]*pendingSignIn // provider sign-ins the relay asked for, running now
 }
 
 // decodeKey decodes a base64 public key in standard or URL alphabet, padded or not (a --ticket-key-file from the
@@ -324,8 +330,9 @@ func (a *Agent) watchRefresh(ctx context.Context, out chan<- struct{}) {
 	}
 }
 
-// helloExtra adds why this connection opened and a rolled-back update.
+// helloExtra adds the kind of Link, why this connection opened and a rolled-back update.
 func (a *Agent) helloExtra(h *protocol.Hello) {
+	h.Kind = a.Opts.Kind
 	a.mu.Lock()
 	a.connects++
 	n := a.connects
@@ -341,15 +348,174 @@ func (a *Agent) helloExtra(h *protocol.Hello) {
 	h.UpdateFailure = update.TakeFailure(a.UpdateDir())
 }
 
-// Hooks are how the relay connection reaches the person. See relay.Config for each.
+// Hooks are how the relay connection reaches the person. See relay.Config for each. ProvidersChanged says a sign-in
+// the relay asked for ended.
 type Hooks struct {
-	Reached     func()
-	PairingCode func(code string)
-	Paired      func(personName, firmName string)
-	AskAccept   func(ctx context.Context, personName, personEmail, firmName string) (accept, answered bool)
-	Ready       func(rec pairing.Record)
-	Offline     func()
-	Unpaired    func()
+	Reached          func()
+	NeedsCode        func()
+	Claimed          func(personName, firmName, code string)
+	CodeRejected     func(reason string)
+	Paired           func(personName, firmName string)
+	AskAccept        func(ctx context.Context, personName, personEmail, firmName string) (accept, answered bool)
+	Ready            func(rec pairing.Record)
+	Offline          func()
+	Unpaired         func()
+	ProvidersChanged func()
+}
+
+// SetCode gives the Link the pairing code Firmary shows (pairing v2), before or while it runs. The code is
+// normalised; a malformed one is refused with pairing.ErrBadCode.
+func (a *Agent) SetCode(typed string) error {
+	code, err := pairing.NormalizeCode(typed)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	c := a.client
+	if c == nil {
+		a.code = code
+	}
+	a.mu.Unlock()
+	if c != nil {
+		return c.SetCode(code)
+	}
+	return nil
+}
+
+// CancelPairing is the person's Cancel while connecting with a code: the connection closes and the code is
+// forgotten.
+func (a *Agent) CancelPairing() {
+	a.mu.Lock()
+	c := a.client
+	a.code = ""
+	a.mu.Unlock()
+	if c != nil {
+		c.CancelPairing()
+	}
+}
+
+// Unpair removes this computer's pairing: the pairing, its names and the device key are deleted here, and the Link
+// waits for a new code. Without a running connection (the unpair command) it deletes the files itself.
+func (a *Agent) Unpair() error {
+	a.cancelSignIns()
+	a.mu.Lock()
+	c := a.client
+	a.mu.Unlock()
+	if c != nil {
+		return c.Unpair()
+	}
+	a.ForgetNames()
+	if err := pairing.Delete(a.PairingPath()); err != nil {
+		return err
+	}
+	if err := devicekey.Delete(a.KeyPath()); err != nil {
+		return err
+	}
+	a.Log.Log(logx.Unpaired, logx.Fields{})
+	return nil
+}
+
+// pendingSignIn is a provider sign-in the relay asked for: the pairing it signs in for, the latest connection's send,
+// and the step once known.
+type pendingSignIn struct {
+	rec    pairing.Record
+	cancel context.CancelFunc
+	send   func(protocol.SigninStep)
+	last   *protocol.SigninStep
+}
+
+// cancelSignIns stops every provider sign-in still running: they belong to a pairing that just ended, and their link
+// or code must never reach whoever pairs next.
+func (a *Agent) cancelSignIns() {
+	a.mu.Lock()
+	for id, s := range a.signingIn {
+		s.cancel()
+		delete(a.signingIn, id)
+	}
+	a.mu.Unlock()
+}
+
+// relaySignIn runs the provider sign-in Firmary asked for over the relay, in the paired person's profile, and passes
+// the provider's link (and code) to Firmary. The desktop app opens the browser here; a server uses the provider's
+// device link, opened on any browser. Claude Code has no device link (its server sign-in needs the code Anthropic's
+// page shows pasted back here, which the relay can't carry yet), so a server refuses that one.
+func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider string, step func(protocol.SigninStep), done func()) {
+	var p ProviderInfo
+	for _, q := range Providers {
+		if q.ID == provider {
+			p = q
+		}
+	}
+	if p.ID == "" {
+		a.Log.Log(logx.ProviderSignIn, logx.Fields{Reason: "unknown_provider"})
+		return
+	}
+	d := a.driver(p.ID)
+	kind := driver.SignInBrowser
+	if a.Opts.Kind == protocol.KindServer {
+		kind = d.Kinds()[1]
+		if kind != driver.SignInDeviceLink {
+			a.Log.Log(logx.ProviderSignIn, logx.Fields{Provider: p.ID, Reason: "relay_no_device_link"})
+			return
+		}
+	}
+	a.mu.Lock()
+	if a.signingIn == nil {
+		a.signingIn = map[string]*pendingSignIn{}
+	}
+	if s := a.signingIn[p.ID]; s != nil && s.rec != rec {
+		// A sign-in for an earlier pairing: stop it, so its link never reaches this person and its sign-in never
+		// lands in the earlier person's profile.
+		s.cancel()
+		delete(a.signingIn, p.ID)
+	}
+	if s := a.signingIn[p.ID]; s != nil {
+		// One sign-in per provider at a time. Firmary asking again (after a reconnect, say) gets its link on the
+		// connection that asked, now if it is known, else when the provider prints it.
+		s.send = step
+		last := s.last
+		a.mu.Unlock()
+		if last != nil {
+			step(*last)
+		}
+		return
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	s := &pendingSignIn{rec: rec, cancel: cancel, send: step}
+	a.signingIn[p.ID] = s
+	a.mu.Unlock()
+	defer func() {
+		cancel()
+		a.mu.Lock()
+		if a.signingIn[p.ID] == s {
+			delete(a.signingIn, p.ID)
+		}
+		a.mu.Unlock()
+		a.RefreshHello()
+		if done != nil {
+			done()
+		}
+	}()
+	if err := a.Ensure(ctx, p.ID); err != nil {
+		a.Log.Log(logx.ProviderSignIn, logx.Fields{Provider: p.ID, Reason: "ensure_failed"})
+		return
+	}
+	err := d.SignIn(ctx, helper.Profile(a.EnvDir, rec, p.ID), kind, driver.SignInUI{Step: func(st driver.SignInStep) {
+		ps := protocol.SigninStep{Kind: st.Kind, URL: st.URL, UserCode: st.UserCode}
+		a.mu.Lock()
+		s.last = &ps
+		send := s.send
+		a.mu.Unlock()
+		send(ps)
+	}})
+	f := logx.Fields{Provider: p.ID, Reason: "relay_ok"}
+	var fail *driver.Failure
+	if errors.As(err, &fail) {
+		f.Reason, f.ErrorClass, f.Pattern = "relay_failed", fail.Class, fail.Pattern
+	} else if err != nil {
+		f.Reason = "relay_failed"
+	}
+	a.Log.Log(logx.ProviderSignIn, f)
 }
 
 // Run keeps the relay connection up and the updater running until ctx ends.
@@ -358,11 +524,22 @@ func (a *Agent) Run(ctx context.Context, h Hooks) error {
 	refresh := make(chan struct{}, 1)
 	go a.watchRefresh(ctx, refresh)
 	var committed sync.Once
+	// The pending code moves into the client and the client becomes the one SetCode and CancelPairing reach in one
+	// step, so a code typed while the Link starts is never stranded.
+	a.mu.Lock()
 	client, err := relay.New(relay.Config{
-		URL: url, Env: a.Opts.EnvName, HelperVersion: a.Opts.Version, Device: PairingDevice(), Log: a.Log, Handler: a.Helper,
-		KeyPath: a.KeyPath(), PairingPath: a.PairingPath(),
-		ShowConnected:   h.Reached,
-		ShowPairingCode: h.PairingCode,
+		URL: url, Env: a.Opts.EnvName, HelperVersion: a.Opts.Version, Device: PairingDevice(a.Opts.Kind), Log: a.Log,
+		Handler: a.Helper, KeyPath: a.KeyPath(), PairingPath: a.PairingPath(),
+		ShowConnected: h.Reached,
+		// Pairing v2 only: the Link pairs with the code Firmary shows, and never shows one of its own.
+		TypedCode:        true,
+		Code:             a.code,
+		ShowNeedsCode:    h.NeedsCode,
+		ShowClaimed:      h.Claimed,
+		ShowCodeRejected: h.CodeRejected,
+		SignIn: func(ctx context.Context, rec pairing.Record, provider string, step func(protocol.SigninStep)) {
+			a.relaySignIn(ctx, rec, provider, step, h.ProvidersChanged)
+		},
 		ShowPaired: func(person, firm string) {
 			a.SaveNames(Names{Person: person, Firm: firm})
 			if h.Paired != nil {
@@ -379,6 +556,7 @@ func (a *Agent) Run(ctx context.Context, h Hooks) error {
 		},
 		ShowOffline: h.Offline,
 		ShowUnpaired: func() {
+			a.cancelSignIns()
 			a.ForgetNames()
 			if h.Unpaired != nil {
 				h.Unpaired()
@@ -386,9 +564,18 @@ func (a *Agent) Run(ctx context.Context, h Hooks) error {
 		},
 		Refresh: refresh,
 	})
+	if err == nil {
+		a.code, a.client = "", client
+	}
+	a.mu.Unlock()
 	if err != nil {
 		return err
 	}
+	defer func() {
+		a.mu.Lock()
+		a.client = nil
+		a.mu.Unlock()
+	}()
 	if a.Opts.Updates && update.IsRelease(a.Opts.Version) {
 		a.startUpdater(ctx)
 		// Offline for a long time still keeps a new version that runs.

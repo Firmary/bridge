@@ -26,6 +26,7 @@ import (
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/logx"
 	"github.com/Firmary/bridge/internal/pairing"
+	"github.com/Firmary/bridge/internal/protocol"
 	"github.com/Firmary/bridge/internal/service"
 	"github.com/Firmary/bridge/internal/tray"
 	"github.com/Firmary/bridge/internal/update"
@@ -38,7 +39,9 @@ const usageText = `usage: firmary-link [command] [flags]
 
   (no command)        the menu-bar or tray app; without a display, the same as run
   run                 run in this terminal (or as a service)
-  pair                pair this computer with Firmary, in a terminal
+  pair [--code ABCD-EFGH]
+                      pair this computer with the code Firmary shows (asks for it on a terminal)
+  unpair              remove this computer's pairing
   status              show pairing, sign-ins, service and version
   sign-in claude|chatgpt [--device]
                       sign in to your Claude or ChatGPT plan (--device: a link for any browser)
@@ -85,6 +88,8 @@ func main() {
 		err = runTerminal(args, false)
 	case "pair":
 		err = runTerminal(args, true)
+	case "unpair":
+		err = unpair(args)
 	case "status":
 		err = status(args)
 	case "sign-in", "signin":
@@ -134,6 +139,7 @@ type common struct {
 	env, dataDir, ring, relayURL, keyFile string
 	headless, noUpdate                    bool
 	dataDirSet                            bool
+	kind                                  string // protocol.KindDesktop or KindServer
 }
 
 func flags(name string, args []string, extra func(*flag.FlagSet)) (*common, []string) {
@@ -187,8 +193,22 @@ func (c *common) open() (*agent.Agent, error) {
 			return nil, errors.New("--relay-url and --ticket-key-file are only for --env local")
 		}
 	}
+	kind := c.kind
+	if kind == "" {
+		kind = terminalKind()
+	}
 	return agent.Open(agent.Options{Version: version, EnvName: c.env, Env: env, DataDir: c.dataDir, Ring: c.ring,
-		Updates: c.env == "prod" && !c.noUpdate})
+		Updates: c.env == "prod" && !c.noUpdate, Kind: kind})
+}
+
+// terminalKind is the kind of a Link that isn't the desktop app: a server when it runs without a desktop session or
+// under a service manager (no terminal on stdin: systemd, launchd, a logon task, or install.sh's pipe), else the
+// desktop.
+func terminalKind() string {
+	if !hasDisplay() || !console.IsTerminal(os.Stdin) {
+		return protocol.KindServer
+	}
+	return protocol.KindDesktop
 }
 
 // service is the service and login-item configuration for this install.
@@ -249,6 +269,7 @@ func desktop(args []string) error {
 		return runTerminal(args, false)
 	}
 	c, _ := flags("app", args, nil)
+	c.kind = protocol.KindDesktop
 	a, err := c.open()
 	if err != nil {
 		return err
@@ -274,9 +295,18 @@ func desktop(args []string) error {
 }
 
 // runTerminal runs the Link in a terminal or under a service manager. With pairOnly it stops as soon as the
-// computer is paired (the `pair` command), and fails if the pairing is declined.
+// computer is paired (the `pair` command), and fails if the pairing is declined or the code is refused.
 func runTerminal(args []string, pairOnly bool) error {
-	c, _ := flags("run", args, nil)
+	var code string
+	c, _ := flags("run", reorder(args), func(fs *flag.FlagSet) {
+		if pairOnly {
+			fs.StringVar(&code, "code", "", "the pairing code Firmary shows, like ABCD-EFGH")
+		}
+	})
+	if pairOnly && service.Query(c.service("run")).Installed {
+		// Pairing for the always-on service (install.sh sets it up first): the computer pairs as a server.
+		c.kind = protocol.KindServer
+	}
 	a, err := c.open()
 	if err != nil {
 		return err
@@ -284,22 +314,30 @@ func runTerminal(args []string, pairOnly bool) error {
 	defer a.Close()
 	out := &console.Printer{W: os.Stdout, Terminal: console.IsTerminal(os.Stdout)}
 	if console.IsTerminal(os.Stdin) {
-		// Only a person at a terminal can accept a pairing offer.
+		// Only a person at a terminal can type a code or accept a pairing offer.
 		out.In = console.Lines(os.Stdin)
 	}
+	interactive := out.In != nil && out.Terminal
 
 	if pairOnly {
 		if rec, _ := a.Pairing(); rec != nil {
 			names, _ := a.LoadNames()
-			if names.Firm != "" {
-				out.Paired(names.Person, names.Firm)
+			if names.Firm != "" && out.Terminal {
+				fmt.Printf("ok  Already paired to %s · %s\n", names.Person, names.Firm)
 			} else {
 				fmt.Println("ok  This computer is already paired.")
 			}
+			if code != "" {
+				fmt.Printf("    To pair it with this code instead, run: %s unpair, then pair again.\n", brand.Command)
+			}
 			return nil
 		}
-		if out.In == nil || !out.Terminal {
-			return errors.New("pairing needs a terminal: run `firmary-link pair` in one")
+		if code != "" {
+			if err := a.SetCode(code); err != nil {
+				return err
+			}
+		} else if !interactive {
+			return errors.New("give the pairing code Firmary shows: firmary-link pair --code ABCD-EFGH")
 		}
 		// A running service holds the connection; pause it while pairing here.
 		svc := c.service("run")
@@ -331,29 +369,100 @@ func runTerminal(args []string, pairOnly bool) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var reached sync.Once // say it once, not on every reconnect
+	var mu sync.Mutex
 	var result error
+	fail := func(err error) {
+		mu.Lock()
+		if result == nil {
+			result = err
+		}
+		mu.Unlock()
+		cancel()
+	}
 	hooks := agent.Hooks{
-		Reached:     func() { reached.Do(out.Reached) },
-		PairingCode: out.PairingCode,
-		Paired:      out.Paired,
-		AskAccept:   out.ConfirmPairing,
+		Reached:      func() { reached.Do(out.Reached) },
+		Claimed:      out.Claimed,
+		CodeRejected: out.CodeRejected,
+		Paired:       out.Paired,
+		AskAccept:    out.ConfirmPairing,
+		NeedsCode: func() {
+			switch {
+			case interactive:
+				// Ask for the code Firmary shows; the relay connection waits until it has one.
+				go askPairingCode(ctx, out, a)
+			case pairOnly:
+				fail(errors.New("not paired: show a new code in Firmary and run firmary-link pair --code ABCD-EFGH"))
+			default:
+				out.NeedsCode()
+			}
+		},
 	}
 	if pairOnly {
 		hooks.Ready = func(pairing.Record) { cancel() }
-		hooks.Unpaired = func() {
-			result = errors.New("not paired")
-			cancel()
-		}
+		hooks.Unpaired = func() { fail(errors.New("not paired")) }
 	}
 	if err := a.Run(ctx, hooks); err != nil {
 		return err
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	if pairOnly && result == nil && ctx.Err() != nil {
 		if rec, _ := a.Pairing(); rec == nil {
 			return errors.New("not paired")
 		}
 	}
 	return result
+}
+
+// askPairingCode asks on the terminal for the code Firmary shows until a well-formed one is typed, and gives it to
+// the Link.
+func askPairingCode(ctx context.Context, out *console.Printer, a *agent.Agent) {
+	for again := false; ; again = true {
+		out.AskPairingCode(again)
+		select {
+		case <-ctx.Done():
+			return
+		case line, ok := <-out.In:
+			if !ok {
+				return
+			}
+			if a.SetCode(line) == nil {
+				return
+			}
+		}
+	}
+}
+
+// unpair removes this computer's pairing and device key. A running service is stopped first, so it doesn't keep
+// the old key's connection, and started again to wait for a new code.
+func unpair(args []string) error {
+	c, _ := flags("unpair", args, nil)
+	a, err := c.open()
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	if rec, _ := a.Pairing(); rec == nil {
+		fmt.Println("ok  This computer isn't paired.")
+		return nil
+	}
+	svc := c.service("run")
+	if st := service.Query(svc); st.Running {
+		if err := service.Stop(svc); err == nil {
+			defer service.Start(svc)
+		}
+	}
+	release, err := lock(a)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if err := a.Unpair(); err != nil {
+		return err
+	}
+	fmt.Println("ok  Unpaired. This computer no longer works for Firmary; remove it in Firmary too (Settings › Connections).")
+	fmt.Printf("    To pair it again: %s pair --code ABCD-EFGH\n", brand.Command)
+	return nil
 }
 
 func providerArg(args []string) (agent.ProviderInfo, error) {
@@ -435,7 +544,7 @@ func signIn(args []string) error {
 	}
 	a.Log.Log(logx.ProviderSignIn, logx.Fields{Provider: p.ID, Reason: "ok"})
 	st, _ := d.Status(ctx, prof)
-	out.SignedIn(p.Account, st.AccountType)
+	out.SignedIn(p.Account, st.AccountType, st.AccountEmail)
 	return nil
 }
 
@@ -626,7 +735,7 @@ func reorder(args []string) []string {
 
 func takesValue(name string) bool {
 	switch name {
-	case "env", "data-dir", "ring", "relay-url", "ticket-key-file":
+	case "env", "data-dir", "ring", "relay-url", "ticket-key-file", "code":
 		return true
 	}
 	return false

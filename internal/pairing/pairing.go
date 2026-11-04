@@ -1,5 +1,6 @@
-// Package pairing stores which Firmary user and firm this device is paired to, and derives the pairing code the
-// person compares between the Link and Firmary.
+// Package pairing stores which Firmary user and firm this device is paired to, normalises the pairing code a person
+// types (pairing v2: Firmary shows the code and the person types it into the Link), and derives the v1 code-match
+// code.
 //
 // The code is a commit-then-reveal short authentication string. On each connection the Link picks a fresh
 // random helper nonce Nh and sends Commit(pub, Nh) with its auth message. Only then does the relay send its
@@ -19,6 +20,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+	"unicode"
 )
 
 // Record is the local pairing. It holds ids only; there is no secret in it.
@@ -106,7 +109,9 @@ const (
 // NonceSize is the exact size of both pairing nonces (Nh and Nr).
 const NonceSize = 32
 
-var crockford = base32.NewEncoding("0123456789ABCDEFGHJKMNPQRSTVWXYZ").WithPadding(base32.NoPadding)
+const crockfordAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+var crockford = base32.NewEncoding(crockfordAlphabet).WithPadding(base32.NoPadding)
 
 // NewNonce returns a fresh helper nonce Nh. Use a new one on every connection; never reuse one once revealed.
 func NewNonce() ([]byte, error) {
@@ -138,4 +143,32 @@ func Code(pub ed25519.PublicKey, relayNonce, helperNonce []byte) string {
 	h.Write(helperNonce)
 	s := crockford.EncodeToString(h.Sum(nil)[:5])
 	return s[:4] + "-" + s[4:]
+}
+
+// ErrBadCode is NormalizeCode's error: what was typed isn't eight characters of a pairing code.
+var ErrBadCode = errors.New("a pairing code is eight letters and digits, like ABCD-EFGH")
+
+// NormalizeCode turns a pairing code as a person typed it into the form the relay checks (pairing v2): upper case,
+// spaces and dashes removed, the look-alikes I and L read as 1 and O as 0, then XXXX-XXXX in Crockford base 32.
+func NormalizeCode(typed string) (string, error) {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(typed) {
+		switch {
+		case unicode.IsSpace(r) || unicode.Is(unicode.Pd, r):
+			continue
+		case r == 'I' || r == 'L':
+			r = '1'
+		case r == 'O':
+			r = '0'
+		}
+		if r > unicode.MaxASCII || !strings.ContainsRune(crockfordAlphabet, r) {
+			return "", ErrBadCode
+		}
+		b.WriteRune(r)
+	}
+	s := b.String()
+	if len(s) != 8 {
+		return "", ErrBadCode
+	}
+	return s[:4] + "-" + s[4:], nil
 }

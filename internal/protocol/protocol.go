@@ -37,6 +37,7 @@ const (
 	// Relay -> Helper.
 	TypeChallenge      = "challenge"
 	TypePairingPending = "pairing_pending"
+	TypePairingClaimed = "pairing_claimed"
 	TypePairingOffer   = "pairing_offer"
 	TypePaired         = "paired"
 	TypeWelcome        = "welcome"
@@ -44,6 +45,7 @@ const (
 	TypeCancel         = "cancel"
 	TypeRevoke         = "revoke"
 	TypeError          = "error"
+	TypeSignin         = "signin"
 	// Helper -> relay.
 	TypeAuth           = "auth"
 	TypePairingReveal  = "pairing_reveal"
@@ -51,6 +53,14 @@ const (
 	TypePairingDecline = "pairing_decline"
 	TypeHello          = "hello"
 	TypeEvent          = "event"
+	TypeSigninStep     = "signin_step"
+)
+
+// Device kinds (pairing_reveal device.kind and hello kind): the app on a person's computer, or the always-on
+// headless service on a VPS or home server.
+const (
+	KindDesktop = "desktop"
+	KindServer  = "server"
 )
 
 // Envelope is used to read a message's type before decoding the rest.
@@ -89,13 +99,27 @@ type PairingReveal struct {
 	Nonce string `json:"nonce"`
 	// Device is the computer's own claim about itself, shown to the person before they confirm (optional).
 	Device *PairingDevice `json:"device,omitempty"`
+	// Code is pairing v2: the code Firmary showed the person, as typed at this computer and normalised
+	// (pairing.NormalizeCode). Empty is the v1 exchange, where both sides derive the code from the nonces.
+	Code string `json:"code,omitempty"`
 }
 
-// PairingDevice is pairing_reveal's device: the computer's name (1 to 64 characters), os and arch.
+// PairingDevice is pairing_reveal's device: the computer's name (1 to 64 characters), os, arch and kind (KindDesktop
+// or KindServer).
 type PairingDevice struct {
 	Name string `json:"name,omitempty"`
 	OS   string `json:"os,omitempty"`
 	Arch string `json:"arch,omitempty"`
+	Kind string `json:"kind,omitempty"`
+}
+
+// PairingClaimed (pairing v2): the code this Link sent is live, and this is who asked Firmary for it. The Link shows
+// "Connecting to Firmary as <person> · <firm>" with the code and Cancel. The names are for the person's eyes only:
+// never logged or stored.
+type PairingClaimed struct {
+	Type       string `json:"type"`
+	FirmName   string `json:"firmName"`
+	PersonName string `json:"personName"`
 }
 
 // PairingOffer: a person confirmed this key in Firmary (or confirmed it earlier and this computer never answered).
@@ -148,6 +172,9 @@ type ProviderInfo struct {
 	AccountType   string `json:"accountType,omitempty"`
 	// The provider organisation's display name is deliberately never sent (consent, #1888); OrgID is all D7 needs.
 	OrgID string `json:"orgId,omitempty"`
+	// AccountEmail is the signed-in account's email as the provider reports it, for the paired person's own
+	// Connections page. Never logged; omitted when unknown.
+	AccountEmail string `json:"accountEmail,omitempty"`
 	// Managed: machine-wide managed settings for the provider were found, so IT policy (hooks, env, gateways)
 	// applies to turns. False means none were found by the Link's checks.
 	Managed bool `json:"managed"`
@@ -160,6 +187,7 @@ type Hello struct {
 	OS                      string         `json:"os"`
 	Arch                    string         `json:"arch"`
 	Ring                    string         `json:"ring"`
+	Kind                    string         `json:"kind,omitempty"` // KindDesktop or KindServer
 	Providers               []ProviderInfo `json:"providers"`
 	AcceptedConsentRevision int            `json:"acceptedConsentRevision"`
 	// Launch is what launch profiles this build can carry out (internal/launch). Every Link sends it.
@@ -216,6 +244,23 @@ type Revoke struct {
 type RelayError struct {
 	Type string `json:"type"`
 	Code string `json:"code"`
+}
+
+// Signin asks the Link to start a provider's own sign-in in the paired person's profile. The Link answers with
+// SigninStep once the provider's link is known.
+type Signin struct {
+	Type     string `json:"type"`
+	Provider string `json:"provider"`
+}
+
+// SigninStep is the provider's own sign-in link and, for a device link, its one-time code, which Firmary shows the
+// person. Never logged.
+type SigninStep struct {
+	Type     string `json:"type"`
+	Provider string `json:"provider"`
+	Kind     string `json:"kind"` // "browser" or "device_link"
+	URL      string `json:"url,omitempty"`
+	UserCode string `json:"userCode,omitempty"`
 }
 
 // EventMsg carries one stream event for a turn.

@@ -1,0 +1,582 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Firmary relay message, Helper to relay",
+  "$comment": "Generated from packages/validators/src/ai-relay by `ai-relay:generate`. Do not edit.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "auth"
+        },
+        "publicKey": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{85}[AQgw]$",
+          "description": "Ed25519 signature over the UTF-8 bytes `firmary-helper-auth-v1` LF <relay URL> LF <challenge nonce, unpadded base64url>. <relay URL> is the canonical relay URL string, byte for byte: `wss`, lower-case host, no trailing dot, no port unless not 443, path exactly `/`, no query or fragment, e.g. `wss://relay.prod.firmary.app/`; it matches the pattern ^wss:\\/\\/[a-z0-9-]+(?:\\.[a-z0-9-]+)*(?::(?:[0-9]{1,2}|[0-35-9][0-9]{2}|4[0-35-9][0-9]|44[0-24-9]|[0-9]{4,5}))?\\/$ and is at most 255 characters. The relay verifies against its own configured constant, never the request's Host header."
+        },
+        "helperVersion": {
+          "type": "string",
+          "pattern": "^\\d{1,6}\\.\\d{1,6}\\.\\d{1,6}(?:-[0-9A-Za-z.-]{1,64})?$"
+        },
+        "pairingCommit": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+        }
+      },
+      "required": [
+        "type",
+        "publicKey",
+        "signature",
+        "helperVersion",
+        "pairingCommit"
+      ],
+      "additionalProperties": {}
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "pairing_reveal"
+        },
+        "nonce": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
+        },
+        "device": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "os": {
+              "type": "string",
+              "enum": [
+                "darwin",
+                "windows",
+                "linux"
+              ]
+            },
+            "arch": {
+              "type": "string",
+              "enum": [
+                "x64",
+                "arm64"
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "desktop",
+                "server"
+              ]
+            }
+          },
+          "additionalProperties": {}
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$"
+        }
+      },
+      "required": [
+        "type",
+        "nonce"
+      ],
+      "additionalProperties": {}
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "pairing_accept"
+        },
+        "deviceId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "type",
+        "deviceId"
+      ],
+      "additionalProperties": {}
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "pairing_decline"
+        },
+        "deviceId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      },
+      "required": [
+        "type",
+        "deviceId"
+      ],
+      "additionalProperties": {}
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "hello"
+        },
+        "helperVersion": {
+          "type": "string",
+          "pattern": "^\\d{1,6}\\.\\d{1,6}\\.\\d{1,6}(?:-[0-9A-Za-z.-]{1,64})?$"
+        },
+        "os": {
+          "type": "string",
+          "enum": [
+            "darwin",
+            "windows",
+            "linux"
+          ]
+        },
+        "arch": {
+          "type": "string",
+          "enum": [
+            "x64",
+            "arm64"
+          ]
+        },
+        "ring": {
+          "type": "string",
+          "enum": [
+            "internal",
+            "stable"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "desktop",
+            "server"
+          ]
+        },
+        "providers": {
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "enum": [
+                  "claude-code",
+                  "codex"
+                ]
+              },
+              "pinnedVersion": {
+                "type": "string",
+                "pattern": "^\\d{1,6}\\.\\d{1,6}\\.\\d{1,6}(?:-[0-9A-Za-z.-]{1,64})?$"
+              },
+              "signedIn": {
+                "type": "boolean"
+              },
+              "accountType": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+              },
+              "org": {
+                "not": {}
+              },
+              "orgId": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "accountEmail": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 320
+              },
+              "managed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "signedIn",
+              "managed"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "acceptedConsentRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reconnectReason": {
+          "type": "string",
+          "enum": [
+            "start",
+            "network",
+            "update",
+            "crash",
+            "server_closed"
+          ]
+        },
+        "updateFailure": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string",
+              "pattern": "^\\d{1,6}\\.\\d{1,6}\\.\\d{1,6}(?:-[0-9A-Za-z.-]{1,64})?$"
+            },
+            "pattern": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+            }
+          },
+          "required": [
+            "version",
+            "pattern"
+          ],
+          "additionalProperties": {}
+        },
+        "launch": {
+          "type": "object",
+          "properties": {
+            "profileSchemas": {
+              "minItems": 1,
+              "maxItems": 16,
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "tools": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+              }
+            },
+            "claudeKnobs": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+              }
+            },
+            "codexKnobs": {
+              "maxItems": 32,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+              }
+            }
+          },
+          "required": [
+            "profileSchemas",
+            "tools",
+            "claudeKnobs",
+            "codexKnobs"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "type",
+        "helperVersion",
+        "os",
+        "arch",
+        "ring",
+        "providers",
+        "acceptedConsentRevision"
+      ],
+      "additionalProperties": {}
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "event"
+        },
+        "turnId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "event": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "const": "start"
+                },
+                "model": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+                }
+              },
+              "required": [
+                "t",
+                "model"
+              ],
+              "additionalProperties": {}
+            },
+            {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "const": "text_delta"
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 65536
+                }
+              },
+              "required": [
+                "t",
+                "text"
+              ],
+              "additionalProperties": {}
+            },
+            {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "const": "usage"
+                },
+                "windows": {
+                  "maxItems": 16,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "window": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+                      },
+                      "usedPercent": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "windowMinutes": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 9007199254740991
+                      },
+                      "resetsAt": {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:Z))$"
+                      }
+                    },
+                    "required": [
+                      "window"
+                    ],
+                    "additionalProperties": {}
+                  }
+                },
+                "tokens": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "output": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cacheRead": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cacheWrite": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "t",
+                "windows"
+              ],
+              "additionalProperties": {}
+            },
+            {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "const": "limit"
+                },
+                "resetsAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:Z))$"
+                }
+              },
+              "required": [
+                "t"
+              ],
+              "additionalProperties": {}
+            },
+            {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "const": "error"
+                },
+                "class": {
+                  "type": "string",
+                  "enum": [
+                    "auth",
+                    "rate_limit",
+                    "transient",
+                    "fatal",
+                    "policy"
+                  ]
+                },
+                "pattern": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+                }
+              },
+              "required": [
+                "t",
+                "class",
+                "pattern"
+              ],
+              "additionalProperties": {}
+            },
+            {
+              "type": "object",
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "const": "done"
+                },
+                "providerSessionId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9._:-]{1,256}$"
+                },
+                "tokens": {
+                  "type": "object",
+                  "properties": {
+                    "input": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "output": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cacheRead": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "cacheWrite": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "t"
+              ],
+              "additionalProperties": {}
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "turnId",
+        "event"
+      ],
+      "additionalProperties": {}
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "signin_step"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "claude-code",
+            "codex"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "browser",
+            "device_link"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^https:\\/\\/[A-Za-z0-9.-]+(?::\\d{1,5})?(?:\\/[!-~]*)?$"
+        },
+        "userCode": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9-]{4,32}$"
+        }
+      },
+      "required": [
+        "type",
+        "provider",
+        "kind"
+      ],
+      "additionalProperties": {}
+    }
+  ]
+}

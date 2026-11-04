@@ -11,7 +11,8 @@ that beta moves its data to the new name on first run and stays paired.
 
 ## Status
 
-**Beta, unsigned.** Version 0.2.0 is the first Firmary Link release, published as the latest GitHub release. It is
+**Beta, unsigned.** Version 0.3.0 (pairing v2: Firmary shows the code, the person types it into the Link) is the
+latest GitHub release; 0.2.0 was the first Firmary Link release. It is
 not signed by Apple or Microsoft yet: macOS Gatekeeper and Windows SmartScreen warn the first time it opens. A signed
 build is coming. Installed copies update themselves from the release's signed update manifest.
 
@@ -31,16 +32,19 @@ releases, so `https://github.com/Firmary/bridge/releases/latest/download/<file>`
 - **Mac**: open the dmg, drag **Firmary Link** to **Applications** and open it. The first time macOS blocks it: open
   **System Settings › Privacy & Security** and click **Open Anyway**.
 - **Windows**: run `Firmary-Link-Setup.exe`; at "Windows protected your PC" click **More info › Run anyway**.
-- **Linux server or VPS** (no browser needed on the server):
+- **Linux server or VPS** (no browser needed on the server): Firmary's Settings › Connections › Add a server shows
+  one line with the pairing code in it:
 
   ```sh
-  curl -fsSL https://github.com/Firmary/bridge/releases/latest/download/install.sh | sh
+  curl -fsSL https://github.com/Firmary/bridge/releases/latest/download/install.sh | sh -s -- --code ABCD-EFGH
   ```
 
-  It installs `firmary-link` for the current user (no sudo) after checking it against `checksums.txt`, pairs it
-  with Firmary, makes it start with the server (`firmary-link service install`) and offers the Claude or ChatGPT
-  sign-in, with a link that works on any browser, even a phone. Later: `firmary-link status`,
-  `firmary-link sign-in claude|chatgpt`, `firmary-link service status`.
+  It installs `firmary-link` for the current user (no sudo) after checking it against `checksums.txt`, makes it
+  start with the server and keep running after logout (`firmary-link service install`, a systemd user unit with
+  `loginctl enable-linger`), pairs it with that code (the server prints the code; the person confirms in Firmary)
+  and offers the Claude or ChatGPT sign-in, with a link that works on any browser, even a phone. Later:
+  `firmary-link status`, `firmary-link pair --code ABCD-EFGH`, `firmary-link unpair`,
+  `firmary-link sign-in claude|chatgpt --device`, `firmary-link service status`.
 
 A `vX.Y.Z` tag (plain semver, 0.2.0 or later) builds and publishes the release (`.github/workflows/release.yml`,
 GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fresh expiry.
@@ -56,8 +60,8 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
 - History: the S2 skeleton was built and security-reviewed in a local `firmary-helper` repo
   (`reviews/firmary-helper-s2-security-review-2026-11-01.md`); its commits are kept here as they were.
 - Provenance: all the Go code is new, written for this project (first in that local repo, from 2026-11-01). Nothing
-  is copied from another project. The only copied files are data: the relay test vectors and fixtures in
-  `internal/protocol/testdata` (from Firmary's own `firmary-os`, `packages/validators/ai-relay/helper/fixtures`),
+  is copied from another project. The only copied files are data: the relay test vectors, fixtures and JSON
+  Schemas in `internal/protocol/testdata` (from Firmary's own `firmary-os`, `packages/validators/ai-relay/helper`),
   Anthropic's public release-signing key `internal/driver/claudecode/anthropic-release-key.asc` and the checksums
   in its `pin.go` (from Anthropic's signed release manifest), and the checksums in `internal/driver/codex/pin.go`
   (GitHub's published digests of OpenAI's Codex `rust-v0.166.0` release archives, and of the executables inside
@@ -69,21 +73,30 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
 
 - **Device key.** An Ed25519 key, created on first run in a `0600` file under the data directory. No Firmary secret
   is ever stored on disk.
-- **Pairing by code match.** The Link commits to a random value, the relay sends its own, the Link reveals its
-  value, and both sides derive the same `ABCD-EFGH` code. Firmary shows that code beside the computer that asked;
-  the person pairs there only if it matches the Link's. Nobody types or pastes the code, and no code is ever on a
-  command line. It is new on every connection. It is shown only in a terminal or the app's menu (with a native
-  notification), never in a service log.
-- **Accept on the computer.** Confirming the code in Firmary doesn't pair by itself: the relay then offers the
-  binding, the Link names the person, their email and the firm, and pairs only when the person says yes (typing
-  `yes` in a terminal, or the app's menu or dialog). Anything else sends `pairing_decline` and the Link starts over
-  with a new key. A service with no terminal neither accepts nor declines: run `firmary-link pair` in a terminal.
+- **Pairing with the code Firmary shows (v2, 0.3.0).** Firmary shows an `ABCD-EFGH` code (Crockford base 32, ten
+  minutes, single use). The person types it into the Link (the app's code box, or `firmary-link pair`, which asks on
+  a terminal) or it rides in the server's install line (`--code`). The Link normalises it (upper case, spaces and
+  dashes dropped, I and L read as 1, O as 0), connects (commit-then-reveal as before) and sends it in
+  `pairing_reveal`. The relay answers `pairing_claimed` with who asked for the code, and the Link shows "Connecting
+  to Firmary as <person> · <firm>", the code, "Confirm in your browser if this matches", and Cancel (which closes
+  the connection and forgets the code). A refused code (`pairing_code_not_found`, `pairing_code_expired`) is
+  forgotten and the Link asks for a new one. Unpaired and without a code, the Link doesn't connect. It never shows a
+  code of its own; the v1 code match stays in `internal/relay` for the relay's older Links.
+- **Accept on the computer.** Confirming in Firmary makes the relay offer the binding. When the person typed the
+  code here and the offer names the same person and firm as `pairing_claimed`, the Link accepts on its own: typing
+  the code was this computer's yes (M3). Otherwise it names the person, their email and the firm, and pairs only
+  when the person says yes (typing `yes` in a terminal, or the app's menu or dialog); anything else sends
+  `pairing_decline` and the Link starts over with a new key. A service with no terminal neither accepts nor
+  declines. Unpair (the app's menu, or `firmary-link unpair`) deletes the pairing and the device key here.
 - **One outgoing connection.** A `wss://` WebSocket to the relay with reconnect and backoff, plus `hello`. Nothing
   listens on the computer and no ports are opened, the desktop app included.
 - **The desktop app.** With a display (macOS, Windows, a Linux desktop with a tray), `firmary-link` with no command
-  is a menu-bar or tray app with no terminal: the pairing code and status (Not paired, Waiting for code, Paired to
-  the firm, Connected, Offline), Sign in to Claude, Sign in to ChatGPT, Open at login, Check for updates, Quit.
-  Without a display, or with `--headless`, it is the terminal Link.
+  is a menu-bar or tray app with no terminal: Enter pairing code… (a native box: macOS dialog, Windows InputBox,
+  zenity or kdialog on Linux; it opens by itself when the Link isn't paired), the status (Not paired, Connecting to
+  Firmary as <person> · <firm> with the code and Cancel, Paired to <person> · <firm>, Offline), Unpair this
+  computer, Sign in to Claude, Sign in to ChatGPT, Open at login, Check for updates, Quit. At login it starts
+  quietly: the icon appears, it re-checks the pairing, and nothing opens unless the Link needs the person. Without a
+  display, or with `--headless`, it is the terminal Link.
 - **Its own pinned Claude Code.** The Link installs its own copy from Anthropic's release bucket and checks it
   against Anthropic's signed manifest *and* a checksum Firmary pins. It runs that copy with the updater off, a
   separate profile, no tools, a cleaned environment, and Firmary's system prompt in place of Claude Code's own. The
@@ -99,9 +112,16 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
 - **Turns.** A turn runs only with a ticket signed by Firmary's pinned key that is for this device and its paired
   user, unexpired, unused and matches the prompt. The ticket's adapter picks the app: `helper-claude-code` or
   `helper-codex`.
-- **`hello`.** Reports both provider apps: `signedIn`, `accountType` (Claude: the Claude plan; Codex: the ChatGPT
-  plan type), `orgId` (the Claude organisation or the ChatGPT workspace) and `pinnedVersion`, and is sent again
-  after a sign-in or sign-out.
+- **`hello`.** Reports `kind` (`desktop` for the app, `server` for the always-on service or any run without a
+  desktop session; also in `pairing_reveal.device`) and both provider apps: `signedIn`, `accountType` (Claude: the
+  Claude plan; Codex: the ChatGPT plan type), `orgId` (the Claude organisation or the ChatGPT workspace),
+  `accountEmail` (from `claude auth status` or the ChatGPT id token; for the person's own Connections page, never
+  logged, omitted when unknown) and `pinnedVersion`, and is sent again after a sign-in or sign-out.
+- **Sign-in from Firmary.** On the relay's `signin`, the Link runs that provider's sign-in in the paired person's
+  profile and sends `signin_step` with the link (and code) for Firmary to show: the browser on a desktop, the
+  device link on a server (Codex). Claude Code has no device link; its server sign-in is
+  `firmary-link sign-in claude --device` on the server, until the relay can carry back the code Anthropic's page
+  shows.
 - **Silent self-update.** At start and every few hours, between turns only, the Link reads the signed
   `manifest.json` (firmary-os `UpdateManifest`, detached Ed25519 signature, checked against two pinned update keys,
   current and next). A tampered, foreign-key, replayed or expired manifest is refused. A newer Link in this device's
@@ -111,7 +131,7 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
 - **Always on.** `firmary-link service install|uninstall|status`: a systemd unit (user-level when not root, with
   restart and `MemoryMax`), a launchd agent on macOS, a logon task on Windows. `firmary-link open-at-login on|off`
   for the desktop app.
-- **The terminal screen.** The design's "Always-on server" transcript, changed to the secure pairing flow. The copy
+- **The terminal screen.** The design's "Always-on server" transcript, plus who asked for the code. The copy
   is in [`internal/console`](internal/console); its package comment lists where and why it differs from the design,
   and tests pin it.
 
@@ -132,7 +152,8 @@ Local logs (`logs/link.log`, 5 x 1 MB, rotating) carry metadata only: timestamps
 provider, model, duration, token counts, limit windows, error class and pattern name, versions.
 
 Never logged: prompts, context, outputs, file contents, tokens and credentials, sign-in URLs and codes, the
-pairing code, the person's and firm's names, environment variables, raw provider error text, and the stdout or stderr of `claude`.
+pairing code, the person's and firm's names, the provider account email, environment variables, raw provider error
+text, and the stdout or stderr of `claude`.
 The logger has no free-text field, and tests enforce this.
 
 ## Layout
@@ -173,7 +194,8 @@ Go version: see `go.mod`.
 
 ```sh
 go test ./...
-go run ./cmd/fake-relay            # prints a ws:// URL and a ticket-key file
+go run ./cmd/fake-relay            # prints a ws:// URL, a ticket-key file and a pairing code
+go run ./cmd/firmary-link pair --code CODE --env local --relay-url ws://127.0.0.1:PORT/ --ticket-key-file PATH --data-dir ~/.firmary-link-dev
 go run ./cmd/firmary-link run --env local --relay-url ws://127.0.0.1:PORT/ --ticket-key-file PATH --data-dir ~/.firmary-link-dev
 ```
 

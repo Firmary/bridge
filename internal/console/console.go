@@ -1,20 +1,15 @@
 // Package console prints what the Link tells the person running it. It follows the approved design (design
-// studio 5877e3252806, "Always-on server" screen) except where the design's pairing flow differs from the secure
-// one the Link actually runs:
+// studio 5877e3252806, "Always-on server" screen): Firmary shows a pairing code, the install line or
+// `firmary-link pair` carries it (or the person types it at the prompt), the Link prints it with "Confirm this code
+// in Firmary" and pairs once the person confirms there (pairing v2, see package relay). Where it adds to the design:
 //
-//   - In the design, Firmary makes the code, the install line carries it, and the server prints "the code it was
-//     given". Here the Link works the code out with Firmary's relay after it connects (commit-then-reveal, see
-//     package pairing). Nobody types, pastes or puts a code on a command line. Firmary shows the same code next to
-//     the computer that asked, and the person pairs only if the two match.
-//   - The code is new on every connection, so after a reconnect the Link says the code changed.
-//   - The code is printed only to a terminal, never to a service log such as journald, where other admins of the
-//     computer could read it.
-//   - Confirming the code in Firmary doesn't pair by itself (security re-review M3: a code read out to someone else
-//     must not bind this computer to them). Firmary then asks this computer, which names the person, their email
-//     and the firm, and pairs only on "yes" typed here. Anything else declines. With no terminal to ask, the Link
-//     neither accepts nor declines, and says how to answer.
+//   - Before the code, the Link names who asked Firmary for it ("Connecting to Firmary as <person> · <firm>"), so a
+//     code read out by someone else is noticed. Typing the code here is the computer's own yes (security re-review
+//     M3); if the binding Firmary then offers names anyone else, the Link asks again and pairs only on "yes" typed
+//     here.
 //   - "Paired to" names the person and the firm. The Link then runs only turns whose tickets Firmary signed for
-//     that person, and the screen says so. Like the code, the names are printed only to a terminal.
+//     that person, and the screen says so. The names are printed only to a terminal, never to a service log such as
+//     journald, where other admins of the computer could read them.
 //
 // Nothing printed here goes to the log: pairing codes and names are for the person's eyes only.
 package console
@@ -40,7 +35,7 @@ type Printer struct {
 	// accepted only with a yes typed here.
 	In <-chan string
 
-	codes  int // pairing codes shown since the last pairing
+	needs  int // times the Link said it waits for a code, since the last pairing
 	offers int // pairing offers nobody could be asked about
 }
 
@@ -80,26 +75,42 @@ func (p *Printer) ProviderFailed(app string, err error) {
 // Reached says the Link got through to Firmary. The connection is outgoing only.
 func (p *Printer) Reached() { p.ok("Reached Firmary (outgoing only, nothing to open)") }
 
-// PairingCode shows the code this connection derived. The person compares it with the one Firmary shows; it is
-// never typed anywhere. A later call means the connection restarted and the code changed. When W is not a
-// terminal, the code is withheld and the person is told where to see it.
-func (p *Printer) PairingCode(code string) {
-	defer func() { p.codes++ }()
-	switch {
-	case !p.Terminal:
-		if p.codes == 0 {
-			fmt.Fprintf(p.W, "This computer isn't paired yet. The pairing code is shown only in a terminal, never in "+
-				"system logs.\nTo pair, stop the %s and start it in a terminal.\n", brand.Name)
-		}
-	case p.codes == 0:
-		fmt.Fprintf(p.W, "\nPairing code:\n  %s\n"+
-			"Check that Firmary shows the same code, then pair there.\n"+
-			"If the codes don't match, don't pair. You never type this code.\n"+
-			"Waiting for you to confirm in Firmary…\n", code)
-	default:
-		fmt.Fprintf(p.W, "\nThe connection restarted, so the code changed:\n  %s\n"+
-			"Use this one. Waiting for you to confirm in Firmary…\n", code)
+// NeedsCode says the Link isn't paired and waits for the code Firmary shows. It is said once until the next pairing.
+func (p *Printer) NeedsCode() {
+	if p.needs++; p.needs > 1 {
+		return
 	}
+	fmt.Fprintf(p.W, "This computer isn't paired yet. In Firmary, open Settings › Connections and add this computer "+
+		"to get a pairing code, then run:\n    %s pair --code ABCD-EFGH\n", brand.Command)
+}
+
+// AskPairingCode asks for the pairing code Firmary shows (`firmary-link pair` on a terminal). again says the last answer
+// wasn't a code.
+func (p *Printer) AskPairingCode(again bool) {
+	if again {
+		fmt.Fprint(p.W, "That isn't a pairing code. It has eight letters and digits, like ABCD-EFGH: ")
+		return
+	}
+	fmt.Fprint(p.W, "Enter the pairing code Firmary shows (Settings › Connections): ")
+}
+
+// Claimed says Firmary knows the code and who asked for it, prints the code to confirm, and waits. The names are
+// printed only to a terminal.
+func (p *Printer) Claimed(personName, firmName, code string) {
+	if p.Terminal {
+		p.ok("Connecting to Firmary as " + personName + " · " + firmName)
+	}
+	fmt.Fprintf(p.W, "Confirm this code in Firmary:\n  %s\nWaiting for you to confirm…\n", code)
+}
+
+// CodeRejected says Firmary refused the code: reason is "expired", "not_found" or another machine name.
+func (p *Printer) CodeRejected(reason string) {
+	p.needs = 1 // what to do next is said here
+	if reason == "expired" {
+		fmt.Fprintln(p.W, "That code has expired. Show a new code in Firmary and enter it here.")
+		return
+	}
+	fmt.Fprintln(p.W, "That code didn't work. Show a new code in Firmary and enter it here.")
 }
 
 // ConfirmPairing names the person and firm a pairing offer would pair this computer to and asks for "yes" (or
@@ -138,7 +149,6 @@ drain:
 		if a := strings.ToLower(strings.TrimSpace(line)); a == "yes" || a == "y" {
 			return true, true
 		}
-		p.codes = 0
 		fmt.Fprintln(p.W, "Declined. This computer isn't paired, and Firmary cancels this pairing.")
 		return false, true
 	case <-ctx.Done():
@@ -150,7 +160,7 @@ drain:
 // Paired names the person and firm this Link is now paired to, so someone who paired to the wrong account can
 // notice and stop it. When W is not a terminal, the names are left out.
 func (p *Printer) Paired(personName, firmName string) {
-	p.codes, p.offers = 0, 0
+	p.needs, p.offers = 0, 0
 	if !p.Terminal {
 		p.ok("Paired (names are shown only in a terminal, never in system logs)")
 		return
@@ -211,13 +221,16 @@ func (p *Printer) AskCode(again bool) {
 	fmt.Fprint(p.W, "Paste that code here and press Return: ")
 }
 
-// SignedIn says the provider sign-in finished, naming the plan (never the email: the Link doesn't read it).
-func (p *Printer) SignedIn(account, plan string) {
-	if plan != "" {
-		p.ok(fmt.Sprintf("Signed in to %s (%s plan)", account, PlanName(plan)))
-		return
+// SignedIn says the provider sign-in finished, naming the account's email (when the provider reports it) and plan.
+func (p *Printer) SignedIn(account, plan, email string) {
+	msg := "Signed in to " + account
+	if email != "" {
+		msg += " as " + email
 	}
-	p.ok("Signed in to " + account)
+	if plan != "" {
+		msg += " (" + PlanName(plan) + " plan)"
+	}
+	p.ok(msg)
 }
 
 // PlanName is how a provider's plan type reads to a person.
