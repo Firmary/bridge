@@ -326,6 +326,25 @@ as in #7026, so L3's preview must show these three mappings itself (the driver t
 - On Codex, `maxTurns` is ignored; a Codex turn with web search is bounded only by the turn timeout.
 - Each driver ignores the other provider's knob block (`claudeCode` on Codex, `codex` on Claude Code).
 
+## 9. Firmary Link 0.2.0 (rename, Codex, update manifest)
+
+No message, field or context string changed: the wire contract keeps its `helper` spelling (`helperVersion`,
+`firmary-helper-auth-v1`, the pairing contexts). What the server sees from a 0.2.0 Link:
+
+- `hello.providers` lists both `claude-code` and `codex`, and `hello` carries the optional `reconnectReason`
+  (`start`, `network`, `update`) and `updateFailure` (`{version, pattern}`, once, after a rolled-back update;
+  patterns `self_test_failed`, `start_failed`, `checksum_mismatch`, `restart_failed`) the schema already has.
+- A ticket's `adapter` picks the provider app: `helper-claude-code` runs on Claude Code, `helper-codex` on Codex. The
+  Codex driver reports its ChatGPT plan type as `accountType` and the ChatGPT account (workspace) id as `orgId`; the
+  business plan types per provider match `BUSINESS_ACCOUNT_TYPES` in `devices.ts`.
+- New `error` pattern: `policy` / `adapter_disabled`, when the signed update manifest's `disabledAdapters` pauses
+  the ticket's adapter (a Link that was offline when the server-side kill switch flipped). Don't retry.
+- The update manifest (`update-manifest.ts`) is published by this repo's release workflow for now, as a release
+  asset (`https://github.com/Firmary/bridge/releases/latest/download/manifest.json` and `.sig`, a base64 Ed25519
+  signature over the exact bytes). One addition, allowed by the open objects: a Codex platform entry carries
+  `archiveSha256`, the release archive's checksum, next to `sha256` (the executable's), because the Link verifies
+  both. A firmary-os manifest publisher should emit it too.
+
 ## Not covered here
 
 The other task reconciling the schemas will find these older differences between this Helper and S1. They predate
