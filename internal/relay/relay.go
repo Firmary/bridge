@@ -1,5 +1,5 @@
 // Package relay is the Helper's one outbound connection to the Firmary relay: challenge-response authentication
-// with the device key, code-match pairing, hello, turn dispatch, and reconnect with backoff.
+// with the device key, code-match pairing and the accept step, hello, turn dispatch, and reconnect with backoff.
 package relay
 
 import (
@@ -45,8 +45,12 @@ type Config struct {
 	ShowConnected   func()                          // tells the person the relay was reached; may be nil
 	ShowPairingCode func(code string)               // shows the code to the person; never logged
 	ShowPaired      func(userName, firmName string) // tells the person who they paired to; never logged
-	MinBackoff      time.Duration
-	MaxBackoff      time.Duration
+	// AskAccept shows the person and firm a pairing offer names and asks the person at this computer whether to
+	// pair. answered is false when nobody can be asked (no terminal) or ctx ended first: then the Helper sends
+	// nothing and the relay keeps the binding unaccepted. The arguments are never logged. Nil never answers.
+	AskAccept  func(ctx context.Context, personName, personEmail, firmName string) (accept, answered bool)
+	MinBackoff time.Duration
+	MaxBackoff time.Duration
 }
 
 // Timeouts.
@@ -119,8 +123,9 @@ func New(cfg Config) (*Client, error) {
 }
 
 var (
-	errRevoked = errors.New("device revoked")
-	errReset   = errors.New("pairing reset")
+	errRevoked  = errors.New("device revoked")
+	errReset    = errors.New("pairing reset")
+	errDeclined = errors.New("pairing declined")
 )
 
 // Run connects and reconnects until ctx is done.
@@ -134,7 +139,7 @@ func (c *Client) Run(ctx context.Context) error {
 		}
 		c.cfg.Log.Log(logx.RelayDisconnect, logx.Fields{Reason: reasonOf(err), DurationMs: time.Since(started).Milliseconds(), Attempt: attempt})
 		// A revoke or reset still waits: a hostile relay must not be able to make the Helper spin.
-		if errors.Is(err, errRevoked) || errors.Is(err, errReset) || time.Since(started) > stableAfter {
+		if errors.Is(err, errRevoked) || errors.Is(err, errReset) || errors.Is(err, errDeclined) || time.Since(started) > stableAfter {
 			backoff = c.cfg.MinBackoff
 		}
 		// Full jitter: wait a random time up to the current backoff.
@@ -172,6 +177,8 @@ func reasonOf(err error) string {
 		return "revoked"
 	case errors.Is(err, errReset):
 		return "pairing_reset"
+	case errors.Is(err, errDeclined):
+		return "pairing_declined"
 	case errors.As(err, &se):
 		return string(se)
 	}
@@ -241,7 +248,7 @@ func (c *Client) session(ctx context.Context, attempt int) error {
 	}()
 	ws.SetPongHandler(func(string) error { return ws.SetReadDeadline(time.Now().Add(readTimeout)) })
 
-	rec, err := c.authenticate(cn)
+	rec, err := c.authenticate(sctx, cn)
 	if err != nil {
 		return err
 	}
@@ -295,7 +302,7 @@ func (c *Client) session(ctx context.Context, attempt int) error {
 }
 
 // authenticate answers the challenge and returns this device's pairing, pairing first if the relay asks.
-func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
+func (c *Client) authenticate(ctx context.Context, cn *conn) (pairing.Record, error) {
 	var none pairing.Record
 	b, typ, err := cn.read()
 	if err != nil {
@@ -335,9 +342,20 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 		return none, sessionError("pairing_unreadable")
 	}
 	codeShown := false
+	var offered *pairing.Record   // the binding offered on this connection
+	accepted := false             // this computer said yes to it
+	var pending <-chan readResult // a read started while the person was asked
 
 	for {
-		b, typ, err := cn.read()
+		var b []byte
+		var typ string
+		if pending != nil {
+			r := <-pending
+			pending = nil
+			b, typ, err = r.b, r.typ, r.err
+		} else {
+			b, typ, err = cn.read()
+		}
 		if err != nil {
 			return none, err
 		}
@@ -354,12 +372,12 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 			if local == nil || *local != rec {
 				// The relay names a pairing this Helper didn't see confirmed. Never adopt it: start over with a
 				// new key, so the next connection pairs by code match.
-				return none, c.wipe(logx.PairingPending, "pairing_mismatch", errReset)
+				return none, c.wipe(logx.PairingPending, logx.Fields{Reason: "pairing_mismatch"}, errReset)
 			}
 			c.cfg.Log.Log(logx.RelayAuthed, logx.Fields{DeviceID: rec.DeviceID})
 			return rec, nil
 		case protocol.TypePairingPending:
-			if codeShown {
+			if codeShown || offered != nil {
 				// One relay nonce per connection: a second one would let the relay try again against the same Nh.
 				return none, sessionError("unexpected_message")
 			}
@@ -387,10 +405,54 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 			if c.cfg.ShowPairingCode != nil {
 				c.cfg.ShowPairingCode(pairing.Code(key.Public(), relayNonce, helperNonce))
 			}
+		case protocol.TypePairingOffer:
+			// Security re-review M3: a code read out to someone else must not bind this computer to them. The relay
+			// offers the binding a person confirmed in Firmary, after this connection's code or (a binding never
+			// answered on an earlier connection) right after auth, and pairs only on this computer's own yes.
+			if offered != nil {
+				return none, sessionError("unexpected_message")
+			}
+			m, err := protocol.Decode[protocol.PairingOffer](b)
+			if err != nil {
+				return none, err
+			}
+			rec := pairing.Record{DeviceID: m.DeviceID, UserID: m.UserID, FirmID: m.FirmID, Env: c.cfg.Env}
+			personName, okName := displayName(m.PersonName)
+			personEmail, okEmail := displayName(m.PersonEmail)
+			firmName, okFirm := displayName(m.FirmName)
+			if rec.Validate() != nil || !okName || !okEmail || !okFirm {
+				return none, sessionError("bad_pairing_offer")
+			}
+			offered = &rec
+			c.cfg.Log.Log(logx.PairingOffered, logx.Fields{DeviceID: rec.DeviceID})
+			// No read deadline while the person reads the offer: the relay withdraws it after its own timeout.
+			_ = cn.ws.SetReadDeadline(time.Time{})
+			accept, answered, next := c.ask(ctx, cn, personName, personEmail, firmName)
+			pending = next
+			switch {
+			case !answered:
+				// Nobody could be asked (no terminal), or the relay spoke first. Never accept for the person, and
+				// don't decline either: the relay treats a decline as the person disowning the binding and revokes
+				// it. Wait; the relay withdraws the offer when its accept timeout ends, then offers it again on
+				// the next connection, where someone at a terminal can answer.
+				c.cfg.Log.Log(logx.PairingOffered, logx.Fields{DeviceID: rec.DeviceID, Reason: "unanswered"})
+			case accept:
+				if err := cn.send(protocol.PairingAnswer{Type: protocol.TypePairingAccept, DeviceID: rec.DeviceID}); err != nil {
+					return none, err
+				}
+				accepted = true
+				c.cfg.Log.Log(logx.PairingAccepted, logx.Fields{DeviceID: rec.DeviceID})
+				_ = cn.ws.SetReadDeadline(time.Now().Add(handshakeTimeout))
+			default:
+				// The relay revokes the binding. Start over with a new key, as after a revoke, whether or not the
+				// decline got through: the old key's binding can then never be accepted.
+				_ = cn.send(protocol.PairingAnswer{Type: protocol.TypePairingDecline, DeviceID: rec.DeviceID})
+				return none, c.wipe(logx.PairingDeclined, logx.Fields{DeviceID: rec.DeviceID}, errDeclined)
+			}
 		case protocol.TypePaired:
-			if !codeShown {
-				// Pairing only ever follows a code the person could compare.
-				return none, sessionError("paired_without_code")
+			if !accepted {
+				// Pairing only ever follows this computer's own yes to the offer.
+				return none, sessionError("paired_without_accept")
 			}
 			m, err := protocol.Decode[protocol.Paired](b)
 			if err != nil {
@@ -402,6 +464,9 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 				return none, sessionError("bad_paired")
 			}
 			rec := pairing.Record{DeviceID: m.DeviceID, UserID: m.UserID, FirmID: m.FirmID, Env: c.cfg.Env}
+			if rec != *offered {
+				return none, sessionError("paired_not_offered")
+			}
 			if err := pairing.Save(c.cfg.PairingPath, rec); err != nil {
 				return none, sessionError("pairing_save_failed")
 			}
@@ -415,6 +480,45 @@ func (c *Client) authenticate(cn *conn) (pairing.Record, error) {
 		default:
 			return none, sessionError("unexpected_message")
 		}
+	}
+}
+
+type readResult struct {
+	b   []byte
+	typ string
+	err error
+}
+
+// ask puts an offer to the person while it keeps reading the connection, so pings are still answered and a relay
+// that withdraws the offer (its accept timeout, or a newer connection for this device) ends the question. The caller
+// takes its next message from next.
+func (c *Client) ask(ctx context.Context, cn *conn, personName, personEmail, firmName string) (accept, answered bool, next <-chan readResult) {
+	read := make(chan readResult, 1)
+	go func() {
+		b, typ, err := cn.read()
+		read <- readResult{b, typ, err}
+	}()
+	if c.cfg.AskAccept == nil {
+		return false, false, read
+	}
+	actx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type reply struct{ accept, answered bool }
+	replied := make(chan reply, 1)
+	go func() {
+		a, ok := c.cfg.AskAccept(actx, personName, personEmail, firmName)
+		replied <- reply{a, ok}
+	}()
+	select {
+	case r := <-replied:
+		return r.accept, r.answered, read
+	case r := <-read:
+		// The relay spoke, or the connection ended, before the person answered: the question is void.
+		cancel()
+		<-replied
+		again := make(chan readResult, 1)
+		again <- r
+		return false, false, again
 	}
 }
 
@@ -438,11 +542,11 @@ func displayName(s string) (string, bool) {
 }
 
 // revoke handles the relay's revoke: the device was unpaired.
-func (c *Client) revoke() error { return c.wipe(logx.Revoked, "", errRevoked) }
+func (c *Client) revoke() error { return c.wipe(logx.Revoked, logx.Fields{}, errRevoked) }
 
 // wipe deletes the pairing and the device key, then makes a fresh key so the next connection pairs anew.
-func (c *Client) wipe(ev logx.Event, reason string, result error) error {
-	c.cfg.Log.Log(ev, logx.Fields{Reason: reason})
+func (c *Client) wipe(ev logx.Event, f logx.Fields, result error) error {
+	c.cfg.Log.Log(ev, f)
 	if err := pairing.Delete(c.cfg.PairingPath); err != nil {
 		return sessionError("revoke_failed")
 	}

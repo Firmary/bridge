@@ -114,6 +114,7 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	client, err := relay.New(relay.Config{URL: r.URL, Env: "local", KeyPath: g.keyPath, PairingPath: g.pairingPath,
 		HelperVersion: "0.0.0-test", Log: log, Handler: h, ShowPairingCode: func(c string) { g.shown <- c },
 		ShowPaired: func(user, firm string) { g.paired <- user + " · " + firm },
+		AskAccept:  func(context.Context, string, string, string) (bool, bool) { return true, true },
 		MinBackoff: 10 * time.Millisecond, MaxBackoff: 50 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
@@ -265,7 +266,7 @@ func TestHelperAgainstFakeRelay(t *testing.T) {
 	}
 	all := written.String()
 	for _, canary := range []string{testkit.PromptCanary, testkit.ContextCanary, testkit.OutputCanary, testkit.StderrCanary,
-		testkit.EmailCanary, testkit.OrgCanary, testkit.EnvCanary, code, code2, fakerelay.UserName, fakerelay.FirmName, "sk-ant"} {
+		testkit.EmailCanary, testkit.OrgCanary, testkit.EnvCanary, code, code2, fakerelay.UserName, fakerelay.UserEmail, fakerelay.FirmName, "sk-ant"} {
 		if strings.Contains(all, canary) {
 			t.Errorf("never-logged value %q found in the Helper's files", canary)
 		}

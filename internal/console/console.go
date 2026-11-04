@@ -9,6 +9,10 @@
 //   - The code is new on every connection, so after a reconnect the Helper says the code changed.
 //   - The code is printed only to a terminal, never to a service log such as journald, where other admins of the
 //     computer could read it.
+//   - Confirming the code in Firmary doesn't pair by itself (security re-review M3: a code read out to someone else
+//     must not bind this computer to them). Firmary then asks this computer, which names the person, their email
+//     and the firm, and pairs only on "yes" typed here. Anything else declines. With no terminal to ask, the Helper
+//     neither accepts nor declines, and says how to answer.
 //   - "Paired to" names the person and the firm. The Helper then runs only turns whose tickets Firmary signed for
 //     that person, and the screen says so. Like the code, the names are printed only to a terminal.
 //
@@ -16,9 +20,12 @@
 package console
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/Firmary/bridge/internal/brand"
 )
@@ -29,7 +36,24 @@ type Printer struct {
 	// Terminal is true when W is a terminal a person is watching. The pairing code is printed only then.
 	Terminal bool
 
-	codes int // pairing codes shown since the last pairing
+	// In delivers lines typed on the terminal (see Lines); nil when stdin isn't a terminal. A pairing offer is
+	// accepted only with a yes typed here.
+	In <-chan string
+
+	codes  int // pairing codes shown since the last pairing
+	offers int // pairing offers nobody could be asked about
+}
+
+// Lines reads r line by line, for Printer.In. The channel closes at end of input.
+func Lines(r io.Reader) <-chan string {
+	ch := make(chan string)
+	go func() {
+		defer close(ch)
+		for s := bufio.NewScanner(r); s.Scan(); {
+			ch <- s.Text()
+		}
+	}()
+	return ch
 }
 
 // IsTerminal reports whether f is a terminal. Under systemd, stdout is a journald socket, so it is not.
@@ -78,10 +102,55 @@ func (p *Printer) PairingCode(code string) {
 	}
 }
 
+// ConfirmPairing names the person and firm a pairing offer would pair this computer to and asks for "yes" (or
+// "y"); any other line declines. It doesn't answer (answered is false) when there is no terminal to show the names
+// and read the answer on, when input has ended, or when ctx ends first.
+func (p *Printer) ConfirmPairing(ctx context.Context, personName, personEmail, firmName string) (accept, answered bool) {
+	if !p.Terminal || p.In == nil {
+		if p.offers == 0 {
+			fmt.Fprintf(p.W, "Someone paired this computer in Firmary. It pairs only after a yes typed on this computer, "+
+				"and the names are shown only in a terminal.\nTo answer, stop the %s and start it in a terminal.\n", brand.Name)
+		}
+		p.offers++
+		return false, false
+	}
+	// Anything typed before the question is not an answer to it.
+drain:
+	for {
+		select {
+		case _, ok := <-p.In:
+			if !ok {
+				break drain
+			}
+		default:
+			break drain
+		}
+	}
+	fmt.Fprintf(p.W, "\nFirmary asks to pair this computer to:\n  %s (%s)\n  %s\n"+
+		"Pair only if this is you and your firm. If you didn't just pair it in Firmary yourself, decline.\n"+
+		"Type yes to pair, or anything else to decline: ", personName, personEmail, firmName)
+	select {
+	case line, ok := <-p.In:
+		if !ok {
+			fmt.Fprintln(p.W, "\nNo answer. If the pairing is still open, Firmary asks again when the "+brand.Name+" reconnects.")
+			return false, false
+		}
+		if a := strings.ToLower(strings.TrimSpace(line)); a == "yes" || a == "y" {
+			return true, true
+		}
+		p.codes = 0
+		fmt.Fprintln(p.W, "Declined. This computer isn't paired, and Firmary cancels this pairing.")
+		return false, true
+	case <-ctx.Done():
+		fmt.Fprintln(p.W, "\nThe question ended before you answered. If the pairing is still open, Firmary asks again when the "+brand.Name+" reconnects.")
+		return false, false
+	}
+}
+
 // Paired names the person and firm this Helper is now paired to, so someone who paired to the wrong account can
 // notice and stop it. When W is not a terminal, the names are left out.
 func (p *Printer) Paired(personName, firmName string) {
-	p.codes = 0
+	p.codes, p.offers = 0, 0
 	if !p.Terminal {
 		p.ok("Paired (names are shown only in a terminal, never in system logs)")
 		return

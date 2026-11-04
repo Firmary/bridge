@@ -2,6 +2,7 @@ package console
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -69,6 +70,66 @@ func TestCodeAndNamesOnlyOnATerminal(t *testing.T) {
 		"ok  Paired (names are shown only in a terminal, never in system logs)\n"
 	if b.String() != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", b.String(), want)
+	}
+}
+
+// answerOnPrompt types answer once the pairing question has been printed.
+type answerOnPrompt struct {
+	bytes.Buffer
+	in     chan string
+	answer string
+}
+
+func (w *answerOnPrompt) Write(b []byte) (int, error) {
+	if bytes.Contains(b, []byte("Type yes")) {
+		w.in <- w.answer
+	}
+	return w.Buffer.Write(b)
+}
+
+// The accept step pairs only on a yes typed after the question; anything else, including a yes typed before it,
+// declines. Off a terminal it doesn't answer and doesn't print the names.
+func TestConfirmPairing(t *testing.T) {
+	for _, c := range []struct {
+		typeahead, answer string
+		accept            bool
+	}{
+		{"", " YES ", true},
+		{"", "y", true},
+		{"yes", "", false},
+		{"", "no", false},
+	} {
+		w := &answerOnPrompt{in: make(chan string, 2), answer: c.answer}
+		if c.typeahead != "" {
+			w.in <- c.typeahead
+		}
+		p := &Printer{W: w, Terminal: true, In: w.in}
+		accept, answered := p.ConfirmPairing(context.Background(), "Maria Okafor", "maria@example.com", "Harlow & Pike CPA")
+		if accept != c.accept || !answered {
+			t.Errorf("typeahead %q, answer %q: accept %v, answered %v", c.typeahead, c.answer, accept, answered)
+		}
+		want := "\nFirmary asks to pair this computer to:\n  Maria Okafor (maria@example.com)\n  Harlow & Pike CPA\n" +
+			"Pair only if this is you and your firm. If you didn't just pair it in Firmary yourself, decline.\n" +
+			"Type yes to pair, or anything else to decline: "
+		if !c.accept {
+			want += "Declined. This computer isn't paired, and Firmary cancels this pairing.\n"
+		}
+		if w.String() != want {
+			t.Errorf("answer %q printed:\n%s\nwant:\n%s", c.answer, w.String(), want)
+		}
+	}
+
+	var b bytes.Buffer
+	p := &Printer{W: &b, In: make(chan string)}
+	for range 2 {
+		if accept, answered := p.ConfirmPairing(context.Background(), "Maria Okafor", "maria@example.com", "Harlow & Pike CPA"); accept || answered {
+			t.Fatalf("off a terminal: accept %v, answered %v", accept, answered)
+		}
+	}
+	want := "Someone paired this computer in Firmary. It pairs only after a yes typed on this computer, and the names " +
+		"are shown only in a terminal.\nTo answer, stop the Firmary Helper and start it in a terminal.\n"
+	if b.String() != want {
+		t.Fatalf("off a terminal printed:\n%s\nwant:\n%s", b.String(), want)
 	}
 }
 
