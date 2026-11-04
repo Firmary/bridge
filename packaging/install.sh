@@ -1,18 +1,38 @@
 #!/bin/sh
-# Install Firmary Link on a Linux server or a Mac, for the current user, without sudo:
+# Install Firmary Link on a Linux server or a Mac, for the current user, without sudo. Firmary (Settings ›
+# Connections › Add a server) gives the line, with the pairing code it shows:
 #
-#   curl -fsSL https://github.com/Firmary/bridge/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/Firmary/bridge/releases/latest/download/install.sh | sh -s -- --code ABCD-EFGH
 #
-# It downloads the latest release, checks it against checksums.txt, installs it, pairs it with Firmary,
-# makes it start with the machine and offers to sign in to Claude or ChatGPT.
+# It downloads the latest release, checks it against checksums.txt, installs it, makes it start with the machine
+# and keep running after you log out, pairs it with that code (you confirm in Firmary) and offers to sign in to
+# Claude or ChatGPT. Without --code it asks for the code on a terminal.
 #
-# FIRMARY_LINK_NONINTERACTIVE=1  don't pair or sign in here; print the commands instead
+# Options: --code ABCD-EFGH; for development also --env, --relay-url, --ticket-key-file (passed to firmary-link).
+# FIRMARY_LINK_NONINTERACTIVE=1  don't ask anything here; print the commands instead
 # FIRMARY_LINK_NO_SERVICE=1      don't make it start with the machine
 # FIRMARY_LINK_BASE_URL          download from somewhere else (https, or http on localhost for tests)
 set -eu
 
 # Everything runs from main, so a download cut short by the network can't run half a script.
 main() {
+  code=
+  link_args=
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --code | --env | --relay-url | --ticket-key-file)
+        [ $# -ge 2 ] || fail "$1 needs a value"
+        # Values are passed on unquoted, so allow only what a code, environment, loopback URL or path holds.
+        case "$2" in
+          "" | -* | *[!A-Za-z0-9._:/@+-]*) fail "$1 $2 isn't valid" ;;
+        esac
+        if [ "$1" = --code ]; then code=$2; else link_args="$link_args $1 $2"; fi
+        shift 2
+        ;;
+      *) fail "unknown option $1 (use --code ABCD-EFGH)" ;;
+    esac
+  done
+
   base_url=${FIRMARY_LINK_BASE_URL:-https://github.com/Firmary/bridge/releases/latest/download}
   base_url=${base_url%/}
   case "$base_url" in
@@ -90,22 +110,35 @@ main() {
     interactive=1
   fi
 
-  if [ "$interactive" -eq 1 ]; then
-    if ! "$bin" pair </dev/tty; then
+  # Always on first, so the pairing below is for the server it will be (pair pauses the service while it runs).
+  service=0
+  if [ "${FIRMARY_LINK_NO_SERVICE:-}" != 1 ]; then
+    # shellcheck disable=SC2086 # link_args is checked above: words without spaces or globs
+    "$bin" service install $link_args
+    service=1
+  fi
+
+  # The code came with the line, so pairing needs no terminal; one is used only if Firmary then asks this computer.
+  tty=/dev/null
+  if [ "$interactive" -eq 1 ]; then tty=/dev/tty; fi
+  if [ -n "$code" ]; then
+    # shellcheck disable=SC2086
+    if ! "$bin" pair --code "$code" $link_args <"$tty"; then
       say ""
-      say "Pairing didn't finish. Run the same install line again, or: $cmd pair"
+      say "Pairing didn't finish. Show a new code in Firmary, then run: $cmd pair --code ABCD-EFGH"
+      exit 1
+    fi
+  elif [ "$interactive" -eq 1 ]; then
+    # shellcheck disable=SC2086
+    if ! "$bin" pair $link_args </dev/tty; then
+      say ""
+      say "Pairing didn't finish. Show a new code in Firmary, then run: $cmd pair --code ABCD-EFGH"
       exit 1
     fi
   else
     say ""
-    say "Pair it with Firmary when you're at a terminal:"
-    say "    $cmd pair"
-  fi
-
-  service=0
-  if [ "${FIRMARY_LINK_NO_SERVICE:-}" != 1 ]; then
-    "$bin" service install
-    service=1
+    say "Pair it with the code Firmary shows (Settings › Connections › Add a server):"
+    say "    $cmd pair --code ABCD-EFGH"
   fi
 
   if [ "$interactive" -eq 1 ]; then
@@ -134,7 +167,8 @@ sign_in() {
     answer=$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')
     case "$answer" in
       claude | chatgpt)
-        if ! "$bin" sign-in "$answer" --device </dev/tty; then
+        # shellcheck disable=SC2086
+        if ! "$bin" sign-in "$answer" --device $link_args </dev/tty; then
           say "Sign-in didn't finish. Try again any time: $cmd sign-in $answer"
         fi
         return 0

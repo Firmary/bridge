@@ -198,6 +198,54 @@
           "codexKnobs": ["reasoningSummary", "verbosity", "replaceBuiltinInstructions"]
         }
       }
+    },
+    {
+      "name": "pairing reveal with the code Firmary showed (pairing v2)",
+      "document": {
+        "type": "pairing_reveal",
+        "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+        "device": {
+          "name": "homelab",
+          "os": "linux",
+          "arch": "x64",
+          "kind": "server"
+        },
+        "code": "R7KD-4MPX"
+      }
+    },
+    {
+      "name": "hello with the signed-in account's email",
+      "document": {
+        "type": "hello",
+        "helperVersion": "1.5.0",
+        "os": "darwin",
+        "arch": "arm64",
+        "ring": "stable",
+        "providers": [
+          {
+            "id": "claude-code",
+            "pinnedVersion": "2.1.31",
+            "signedIn": true,
+            "accountType": "team",
+            "managed": true,
+            "orgId": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c",
+            "accountEmail": "maria@harlowpike.example"
+          },
+          {
+            "id": "codex",
+            "pinnedVersion": "0.165.0",
+            "signedIn": false,
+            "managed": false
+          }
+        ],
+        "acceptedConsentRevision": 3,
+        "reconnectReason": "update",
+        "updateFailure": {
+          "version": "1.5.1",
+          "pattern": "self_test.relay_unreachable"
+        },
+        "kind": "desktop"
+      }
     }
   ],
   "invalid": [
@@ -617,6 +665,15 @@
           "claudeKnobs": ["replaceBuiltinInstructions"]
         }
       }
+    },
+    {
+      "name": "pairing reveal with a code that isn't normalised",
+      "document": {
+        "type": "pairing_reveal",
+        "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+        "code": "r7kd4mpx"
+      },
+      "path": "/code"
     }
   ]
 }

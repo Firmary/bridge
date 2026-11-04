@@ -142,9 +142,10 @@ func prepare(p driver.Profile) error {
 	return nil
 }
 
-// authStatus is the subset of `claude auth status --json` the Link reads. Email and orgName are deliberately not
-// read (consent, #1888). orgId is read so a ticket can bind a turn to one provider organisation (providerOrgIds), not
-// just a plan type.
+// authStatus is the subset of `claude auth status --json` the Link reads. orgName is deliberately not read (consent,
+// #1888). orgId is read so a ticket can bind a turn to one provider organisation (providerOrgIds), not just a plan
+// type. email is read for hello's accountEmail (design 5877e3252806: the person's own Connections page) and never
+// logged.
 type authStatus struct {
 	LoggedIn         bool   `json:"loggedIn"`
 	AuthMethod       string `json:"authMethod"`
@@ -152,6 +153,7 @@ type authStatus struct {
 	APIKeySource     string `json:"apiKeySource"`
 	SubscriptionType string `json:"subscriptionType"`
 	OrgID            string `json:"orgId"`
+	Email            string `json:"email"`
 }
 
 // orgIDRe is the form of an Anthropic organisation id. Anything else is not reported, so it can never match a
@@ -203,6 +205,7 @@ func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderS
 		if orgIDRe.MatchString(s.OrgID) {
 			st.OrgID = s.OrgID
 		}
+		st.AccountEmail = driver.CleanEmail(s.Email)
 	}
 	return st, nil
 }
