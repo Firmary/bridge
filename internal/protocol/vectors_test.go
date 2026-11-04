@@ -118,6 +118,7 @@ func roundTrip[T any](t *testing.T, doc json.RawMessage) any {
 var unmodelled = map[string]bool{
 	"reconnectReason": true, "updateFailure": true, // hello: self-update arrives in a later slice
 	"channel": true, // the stream-event fixture's unknown field from a newer sender
+	"device":  true, // pairing_reveal: the optional computer details the Helper doesn't send yet
 	"jti":     true, // a standard ticket claim the verifier doesn't need
 }
 
@@ -169,6 +170,8 @@ func TestSharedFixturesRoundTrip(t *testing.T) {
 		TypeWelcome: roundTrip[Welcome], TypeTurn: roundTrip[Turn], TypeCancel: roundTrip[Cancel],
 		TypeRevoke: roundTrip[Revoke], TypeError: roundTrip[RelayError], TypeAuth: roundTrip[Auth],
 		TypePairingReveal: roundTrip[PairingReveal], TypeHello: roundTrip[Hello], TypeEvent: roundTrip[EventMsg],
+		TypePairingOffer: roundTrip[PairingOffer], TypePairingAccept: roundTrip[PairingAnswer],
+		TypePairingDecline: roundTrip[PairingAnswer],
 	}
 	// Messages the Helper doesn't implement yet (provider sign-in arrives in a later slice).
 	notYet := map[string]bool{"signin": true, "signout": true, "signin_step": true}

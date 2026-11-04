@@ -1,0 +1,64 @@
+name: release
+
+# A v* tag builds the Helper for every desktop and publishes it as an unsigned GitHub pre-release. Signing (Apple
+# Developer ID and notarization, Azure Trusted Signing) comes later; until then every release is a pre-release.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # create the release and upload its assets; nothing else
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: false # a release build doesn't reuse a cache another run wrote
+      - run: go vet ./...
+      - run: go test ./...
+      - name: Build and package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          # The relay accepts only this form (firmary-os VERSION_PATTERN).
+          [[ "$version" =~ ^[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}(-[0-9A-Za-z.-]{1,64})?$ ]] || { echo "bad tag $TAG"; exit 1; }
+          mkdir -p build dist
+          for target in darwin/arm64 darwin/amd64 windows/amd64 windows/arm64 linux/amd64 linux/arm64; do
+            goos=${target%/*} goarch=${target#*/}
+            name="firmary-helper_${version}_${goos}_${goarch}"
+            exe=firmary-helper
+            [ "$goos" = windows ] && exe=firmary-helper.exe
+            mkdir -p "build/$name"
+            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -trimpath -ldflags "-s -w -X main.version=$version" \
+              -o "build/$name/$exe" ./cmd/firmary-helper
+            cp LICENSE NOTICE "build/$name/"
+            if [ "$goos" = windows ]; then
+              (cd build && zip -qr "../dist/$name.zip" "$name")
+            else
+              tar -C build --owner=0 --group=0 --numeric-owner -czf "dist/$name.tar.gz" "$name"
+            fi
+          done
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          cat dist/SHA256SUMS
+      - name: Publish the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" dist/* --verify-tag --prerelease \
+            --title "Firmary Helper ${TAG#v} (beta, unsigned)" --notes-file .github/release-notes.md

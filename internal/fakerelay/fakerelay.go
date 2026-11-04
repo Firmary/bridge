@@ -1,6 +1,7 @@
 // Package fakerelay is a local stand-in for the Firmary relay, for tests and development. It listens on loopback
-// only, verifies the Helper's challenge signature, computes the pairing code server-side, mints turn tickets with
-// a throwaway key, and records what the Helper sends.
+// only, verifies the Helper's challenge signature, computes the pairing code server-side, offers a confirmed binding
+// and pairs only when the Helper accepts it, mints turn tickets with a throwaway key, and records what the Helper
+// sends.
 package fakerelay
 
 import (
@@ -27,13 +28,17 @@ import (
 	"github.com/Firmary/bridge/internal/ticket"
 )
 
-// Device is a paired device as the relay knows it.
-type Device struct{ DeviceID, UserID, FirmID, UserName, FirmName string }
+// Device is a device as the relay knows it: bound once its code is confirmed, paired once the Helper accepts.
+type Device struct {
+	DeviceID, UserID, FirmID, UserName, FirmName string
+	Accepted                                     bool
+}
 
-// The display names the fake relay sends in paired.
+// The display names and email the fake relay sends in pairing_offer and paired.
 const (
-	UserName = "Synthetic Test Person"
-	FirmName = "Synthetic Test Firm"
+	UserName  = "Synthetic Test Person"
+	UserEmail = "synthetic.person@example.test"
+	FirmName  = "Synthetic Test Firm"
 )
 
 // Relay is a running fake relay.
@@ -44,9 +49,10 @@ type Relay struct {
 	// AutoConfirm pairs a pending device at once, as if the person confirmed the code.
 	AutoConfirm bool
 
-	Codes  chan string
-	Hellos chan protocol.Hello
-	Events chan protocol.EventMsg
+	Codes   chan string
+	Answers chan string // pairing_accept or pairing_decline, as the Helper answered an offer
+	Hellos  chan protocol.Hello
+	Events  chan protocol.EventMsg
 
 	srv *http.Server
 	ln  net.Listener
@@ -77,7 +83,7 @@ func Start(addr string) (*Relay, error) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	r := &Relay{
 		URL: "ws://" + ln.Addr().String() + "/", TicketKey: priv, TicketPub: pub,
-		Codes: make(chan string, 64), Hellos: make(chan protocol.Hello, 64), Events: make(chan protocol.EventMsg, 1024),
+		Codes: make(chan string, 64), Answers: make(chan string, 64), Hellos: make(chan protocol.Hello, 64), Events: make(chan protocol.EventMsg, 1024),
 		ln: ln, devices: map[string]Device{}, pending: map[string]chan Device{},
 	}
 	r.srv = &http.Server{Handler: http.HandlerFunc(r.serve), ReadHeaderTimeout: 5 * time.Second}
@@ -151,11 +157,7 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 	r.Connects++
 	dev, known := r.devices[auth.PublicKey]
 	r.mu.Unlock()
-	if known {
-		if c.WriteJSON(protocol.Welcome{Type: protocol.TypeWelcome, DeviceID: dev.DeviceID, UserID: dev.UserID, FirmID: dev.FirmID}) != nil {
-			return
-		}
-	} else {
+	if !known {
 		// Server side of commit-then-reveal: Nr only after the commitment (in auth), then the reveal must match it.
 		relayNonce := make([]byte, pairing.NonceSize)
 		rand.Read(relayNonce)
@@ -204,8 +206,47 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 		r.mu.Lock()
 		r.devices[auth.PublicKey] = dev
 		r.mu.Unlock()
-		if c.WriteJSON(protocol.Paired{Type: protocol.TypePaired, DeviceID: dev.DeviceID, UserID: dev.UserID, FirmID: dev.FirmID,
-			UserName: dev.UserName, FirmName: dev.FirmName}) != nil {
+	}
+	if dev.Accepted {
+		if c.WriteJSON(protocol.Welcome{Type: protocol.TypeWelcome, DeviceID: dev.DeviceID, UserID: dev.UserID, FirmID: dev.FirmID}) != nil {
+			return
+		}
+	} else {
+		// The accept step: a bound key that this computer hasn't accepted is offered on every connection, and pairs
+		// only on pairing_accept. A decline revokes the binding. No answer: the offer waits.
+		if c.WriteJSON(protocol.PairingOffer{Type: protocol.TypePairingOffer, DeviceID: dev.DeviceID, UserID: dev.UserID,
+			FirmID: dev.FirmID, FirmName: dev.FirmName, PersonName: dev.UserName, PersonEmail: UserEmail}) != nil {
+			return
+		}
+		b, ok := <-msgs
+		if !ok {
+			return
+		}
+		var answer protocol.PairingAnswer
+		json.Unmarshal(b, &answer)
+		if answer.DeviceID != dev.DeviceID {
+			c.WriteJSON(protocol.RelayError{Type: protocol.TypeError, Code: "malformed_accept"})
+			return
+		}
+		r.Answers <- answer.Type
+		switch answer.Type {
+		case protocol.TypePairingAccept:
+			dev.Accepted = true
+			r.mu.Lock()
+			r.devices[auth.PublicKey] = dev
+			r.mu.Unlock()
+			if c.WriteJSON(protocol.Paired{Type: protocol.TypePaired, DeviceID: dev.DeviceID, UserID: dev.UserID, FirmID: dev.FirmID,
+				UserName: dev.UserName, FirmName: dev.FirmName}) != nil {
+				return
+			}
+		case protocol.TypePairingDecline:
+			r.mu.Lock()
+			delete(r.devices, auth.PublicKey)
+			r.mu.Unlock()
+			c.WriteJSON(protocol.RelayError{Type: protocol.TypeError, Code: "pairing_declined"})
+			return
+		default:
+			c.WriteJSON(protocol.RelayError{Type: protocol.TypeError, Code: "unexpected_message"})
 			return
 		}
 	}
@@ -236,7 +277,8 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-// Confirm confirms a pending pairing by its code, as the person would in Firmary.
+// Confirm confirms a pending pairing by its code, as the person would in Firmary. The Helper is then offered the
+// binding.
 func (r *Relay) Confirm(code string) bool {
 	r.mu.Lock()
 	ch, ok := r.pending[code]
