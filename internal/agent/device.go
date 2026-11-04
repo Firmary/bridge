@@ -17,9 +17,10 @@ import (
 const MaxDeviceName = 64
 
 // PairingDevice is what pairing_reveal tells Firmary about this computer: its name (macOS ComputerName, Windows
-// COMPUTERNAME, otherwise the hostname), os and arch. The person sees it beside the code before they confirm.
-func PairingDevice() *protocol.PairingDevice {
-	d := &protocol.PairingDevice{Name: DeviceName(computerName())}
+// COMPUTERNAME, otherwise the hostname), os, arch and kind (protocol.KindDesktop or KindServer). The person sees it
+// before they confirm.
+func PairingDevice(kind string) *protocol.PairingDevice {
+	d := &protocol.PairingDevice{Name: DeviceName(computerName()), Kind: kind}
 	if goos := runtime.GOOS; goos == "darwin" || goos == "windows" || goos == "linux" {
 		d.OS = goos
 	}

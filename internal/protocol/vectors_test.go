@@ -170,10 +170,11 @@ func TestSharedFixturesRoundTrip(t *testing.T) {
 		TypeRevoke: roundTrip[Revoke], TypeError: roundTrip[RelayError], TypeAuth: roundTrip[Auth],
 		TypePairingReveal: roundTrip[PairingReveal], TypeHello: roundTrip[Hello], TypeEvent: roundTrip[EventMsg],
 		TypePairingOffer: roundTrip[PairingOffer], TypePairingAccept: roundTrip[PairingAnswer],
-		TypePairingDecline: roundTrip[PairingAnswer],
+		TypePairingDecline: roundTrip[PairingAnswer], TypePairingClaimed: roundTrip[PairingClaimed],
+		TypeSignin: roundTrip[Signin], TypeSigninStep: roundTrip[SigninStep],
 	}
-	// Messages the Link doesn't implement yet (provider sign-in arrives in a later slice).
-	notYet := map[string]bool{"signin": true, "signout": true, "signin_step": true}
+	// Messages the Link doesn't implement yet.
+	notYet := map[string]bool{"signout": true}
 
 	check := func(file string, decode func(*testing.T, json.RawMessage) (func(*testing.T, json.RawMessage) any, bool)) {
 		for _, f := range readFixtures(t, file).Valid {

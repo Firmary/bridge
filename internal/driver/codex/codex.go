@@ -265,8 +265,9 @@ func (d *Driver) withConfig(p driver.Profile, sub ...string) []string {
 	return append(sub, configArgs(args)...)
 }
 
-// authFile is the subset of CODEX_HOME/auth.json the Link reads. Tokens are never kept: only the id_token's
-// plan type and ChatGPT account id claims are decoded, and the email is deliberately not read (consent, #1888).
+// authFile is the subset of CODEX_HOME/auth.json the Link reads. Tokens are never kept: only the id_token's plan
+// type, ChatGPT account id and email claims are decoded. The email is for hello's accountEmail (design 5877e3252806:
+// the person's own Connections page) and is never logged.
 type authFile struct {
 	AuthMode     string  `json:"auth_mode"`
 	OpenAIAPIKey *string `json:"OPENAI_API_KEY"`
@@ -276,6 +277,11 @@ type authFile struct {
 }
 
 type idClaims struct {
+	Email string `json:"email"`
+	// Profile is where Codex also looks for the email when the top-level claim is absent.
+	Profile struct {
+		Email string `json:"email"`
+	} `json:"https://api.openai.com/profile"`
 	Auth struct {
 		PlanType  string `json:"chatgpt_plan_type"`
 		AccountID string `json:"chatgpt_account_id"`
@@ -286,32 +292,32 @@ type idClaims struct {
 // a ticket's providerOrgIds.
 var accountIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// readAccount returns the plan type and account id of a ChatGPT login in the profile, or ok=false for anything else
-// (no file, an API key, another auth mode, an unreadable token).
-func readAccount(home string) (planType, accountID string, ok bool) {
+// readAccount returns the plan type, account id and email of a ChatGPT login in the profile, or ok=false for anything
+// else (no file, an API key, another auth mode, an unreadable token).
+func readAccount(home string) (planType, accountID, email string, ok bool) {
 	f, err := os.Open(filepath.Join(home, "auth.json"))
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	defer f.Close()
 	var a authFile
 	if json.NewDecoder(io.LimitReader(f, 1<<20)).Decode(&a) != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	if a.AuthMode != "chatgpt" || (a.OpenAIAPIKey != nil && *a.OpenAIAPIKey != "") || a.Tokens == nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	parts := strings.Split(a.Tokens.IDToken, ".")
 	if len(parts) != 3 {
-		return "", "", false
+		return "", "", "", false
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	var c idClaims
 	if json.Unmarshal(payload, &c) != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	if protocol.MachineNameRe.MatchString(c.Auth.PlanType) {
 		planType = c.Auth.PlanType
@@ -319,7 +325,11 @@ func readAccount(home string) (planType, accountID string, ok bool) {
 	if accountIDRe.MatchString(c.Auth.AccountID) {
 		accountID = c.Auth.AccountID
 	}
-	return planType, accountID, true
+	email = c.Email
+	if email == "" {
+		email = c.Profile.Email
+	}
+	return planType, accountID, driver.CleanEmail(email), true
 }
 
 // Status runs `codex login status` in the profile. Signed in means Codex itself says "Logged in using ChatGPT" and
@@ -359,11 +369,11 @@ func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderS
 		}
 		return st, nil
 	}
-	plan, account, ok := readAccount(codexHome(p))
+	plan, account, email, ok := readAccount(codexHome(p))
 	if !ok {
 		return st, nil
 	}
-	st.SignedIn, st.AccountType, st.OrgID = true, plan, account
+	st.SignedIn, st.AccountType, st.OrgID, st.AccountEmail = true, plan, account, email
 	return st, nil
 }
 
