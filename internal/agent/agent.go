@@ -100,12 +100,23 @@ type Agent struct {
 	connects int
 }
 
+// decodeKey decodes a base64 public key in standard or URL alphabet, padded or not (a --ticket-key-file from the
+// relay's own tooling is base64url). It returns nil when none decodes.
+func decodeKey(k string) []byte {
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.URLEncoding, base64.RawStdEncoding, base64.RawURLEncoding} {
+		if b, err := enc.DecodeString(k); err == nil {
+			return b
+		}
+	}
+	return nil
+}
+
 // Open prepares the data directory, log and drivers. It doesn't touch the network.
 func Open(o Options) (*Agent, error) {
 	var keys []ed25519.PublicKey
 	for _, k := range o.Env.TicketKeys {
-		b, err := base64.StdEncoding.DecodeString(k)
-		if err != nil || len(b) != ed25519.PublicKeySize {
+		b := decodeKey(k)
+		if len(b) != ed25519.PublicKeySize {
 			return nil, errors.New("ticket key is malformed")
 		}
 		keys = append(keys, b)
