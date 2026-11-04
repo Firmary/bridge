@@ -48,8 +48,9 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
 ## Where this comes from
 
 - Design: design studio `5877e3252806` ("local bridge" walkthrough, from chat #1825). The screens this repo serves
-  are "Always-on server" (the only terminal people ever see), "Helper on this computer" (restart, what the firm
-  sees, permissions) and "On the computer" (installers on macOS, Windows and Ubuntu).
+  are "Always-on server" (the only terminal people ever see), "Firmary Link on this computer" (restart, what the
+  firm sees, permissions; the design still calls it "Helper", the beta's old name) and "On the computer"
+  (installers on macOS, Windows and Ubuntu).
 - Plan: `reviews/personal-ai-relay-build-plan-2026-11-01.md` (decisions G1–G11, slices S0–S18). This repo is the
   plan's Helper repo ("H").
 - History: the S2 skeleton was built and security-reviewed in a local `firmary-helper` repo
