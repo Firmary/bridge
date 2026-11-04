@@ -6,6 +6,7 @@ import (
 	"archive/tar"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"os"
 	"path/filepath"
@@ -300,8 +301,16 @@ func TestStatusNeedsChatGPTLogin(t *testing.T) {
 		t.Error("ChatGPT login with an API key accepted")
 	}
 	write(testkit.CodexAuthJSON("Business Plan"))
-	if plan, acct, _, ok := readAccount(home); !ok || plan != "" || acct != testkit.CodexAccountID {
-		t.Errorf("got %q %q %v", plan, acct, ok)
+	if plan, acct, email, ok := readAccount(home); !ok || plan != "" || acct != testkit.CodexAccountID || email != testkit.EmailCanary {
+		t.Errorf("got %q %q %q %v", plan, acct, email, ok)
+	}
+	// A token with the email only in the profile claim, as Codex also reads it.
+	b64 := base64.RawURLEncoding.EncodeToString
+	claims := `{"https://api.openai.com/profile":{"email":"` + testkit.EmailCanary + `"},"https://api.openai.com/auth":{"chatgpt_plan_type":"plus"}}`
+	write(`{"auth_mode":"chatgpt","OPENAI_API_KEY":null,"tokens":{"id_token":"` + b64([]byte(`{"alg":"none"}`)) + "." +
+		b64([]byte(claims)) + `.c2ln"}}`)
+	if _, _, email, ok := readAccount(home); !ok || email != testkit.EmailCanary {
+		t.Errorf("profile-claim email: got %q %v", email, ok)
 	}
 }
 

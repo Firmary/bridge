@@ -143,10 +143,13 @@ func TestPairingV2Cancel(t *testing.T) {
 	l.c.CancelPairing()
 	got(t, l.needsCode, "waiting for a new code")
 	// The pending code went with the connection: confirming it now offers nothing.
-	for deadline := time.Now().Add(5 * time.Second); r.Confirm(pending); time.Sleep(10 * time.Millisecond) {
+	for deadline := time.Now().Add(5 * time.Second); r.Pending(pending); time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("the connection stayed open after Cancel")
 		}
+	}
+	if r.Confirm(pending) {
+		t.Fatal("confirming after Cancel still offered a binding")
 	}
 	none(t, r.Answers, "answer")
 	l.c.mu.Lock()

@@ -278,7 +278,11 @@ type authFile struct {
 
 type idClaims struct {
 	Email string `json:"email"`
-	Auth  struct {
+	// Profile is where Codex also looks for the email when the top-level claim is absent.
+	Profile struct {
+		Email string `json:"email"`
+	} `json:"https://api.openai.com/profile"`
+	Auth struct {
 		PlanType  string `json:"chatgpt_plan_type"`
 		AccountID string `json:"chatgpt_account_id"`
 	} `json:"https://api.openai.com/auth"`
@@ -321,7 +325,11 @@ func readAccount(home string) (planType, accountID, email string, ok bool) {
 	if accountIDRe.MatchString(c.Auth.AccountID) {
 		accountID = c.Auth.AccountID
 	}
-	return planType, accountID, driver.CleanEmail(c.Email), true
+	email = c.Email
+	if email == "" {
+		email = c.Profile.Email
+	}
+	return planType, accountID, driver.CleanEmail(email), true
 }
 
 // Status runs `codex login status` in the profile. Signed in means Codex itself says "Logged in using ChatGPT" and
