@@ -32,7 +32,7 @@ var (
 	sha256Re  = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
-// targets maps the Helper's platform names (the same as the Claude Code driver's) to Codex's release targets. Linux
+// targets maps the Link's platform names (the same as the Claude Code driver's) to Codex's release targets. Linux
 // builds are static (musl), so they run on glibc systems too.
 var targets = map[string]string{
 	"darwin-arm64": "aarch64-apple-darwin",

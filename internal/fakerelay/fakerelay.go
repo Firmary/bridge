@@ -1,6 +1,6 @@
 // Package fakerelay is a local stand-in for the Firmary relay, for tests and development. It listens on loopback
-// only, verifies the Helper's challenge signature, computes the pairing code server-side, offers a confirmed binding
-// and pairs only when the Helper accepts it, mints turn tickets with a throwaway key, and records what the Helper
+// only, verifies the Link's challenge signature, computes the pairing code server-side, offers a confirmed binding
+// and pairs only when the Link accepts it, mints turn tickets with a throwaway key, and records what the Link
 // sends.
 package fakerelay
 
@@ -28,7 +28,7 @@ import (
 	"github.com/Firmary/bridge/internal/ticket"
 )
 
-// Device is a device as the relay knows it: bound once its code is confirmed, paired once the Helper accepts.
+// Device is a device as the relay knows it: bound once its code is confirmed, paired once the Link accepts.
 type Device struct {
 	DeviceID, UserID, FirmID, UserName, FirmName string
 	Accepted                                     bool
@@ -50,7 +50,7 @@ type Relay struct {
 	AutoConfirm bool
 
 	Codes   chan string
-	Answers chan string // pairing_accept or pairing_decline, as the Helper answered an offer
+	Answers chan string // pairing_accept or pairing_decline, as the Link answered an offer
 	Hellos  chan protocol.Hello
 	Events  chan protocol.EventMsg
 
@@ -277,7 +277,7 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-// Confirm confirms a pending pairing by its code, as the person would in Firmary. The Helper is then offered the
+// Confirm confirms a pending pairing by its code, as the person would in Firmary. The Link is then offered the
 // binding.
 func (r *Relay) Confirm(code string) bool {
 	r.mu.Lock()
@@ -300,7 +300,7 @@ func (r *Relay) Current() (Device, bool) {
 	return *r.current, true
 }
 
-// WaitConnected waits until a paired Helper is connected.
+// WaitConnected waits until a paired Link is connected.
 func (r *Relay) WaitConnected(ctx context.Context) (Device, error) {
 	for {
 		if d, ok := r.Current(); ok {
@@ -314,7 +314,7 @@ func (r *Relay) WaitConnected(ctx context.Context) (Device, error) {
 	}
 }
 
-// The built-in launch profile (version 0): the Helper's embedded prompt, no tools. Claims binds it and SendTurn sends
+// The built-in launch profile (version 0): the Link's embedded prompt, no tools. Claims binds it and SendTurn sends
 // it.
 const (
 	BuiltInProfile        = `{"schema":1}`
@@ -359,7 +359,7 @@ func (r *Relay) Drop() {
 	}
 }
 
-// Forget removes every paired device, as an unpair while the Helper was offline would.
+// Forget removes every paired device, as an unpair while the Link was offline would.
 func (r *Relay) Forget() {
 	r.mu.Lock()
 	r.devices = map[string]Device{}

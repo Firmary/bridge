@@ -7,7 +7,7 @@ import (
 	"github.com/Firmary/bridge/internal/brand"
 )
 
-// settings are the Helper's Codex settings, as TOML dotted keys and values. Keys are from the pinned release's own
+// settings are the Link's Codex settings, as TOML dotted keys and values. Keys are from the pinned release's own
 // config.schema.json (codex-rs/core/config.schema.json at rust-v0.166.0); the pinned binary runs with
 // --strict-config, so a key that a later pin drops fails the turn instead of being silently ignored.
 //

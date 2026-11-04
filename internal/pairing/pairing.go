@@ -1,10 +1,10 @@
 // Package pairing stores which Firmary user and firm this device is paired to, and derives the pairing code the
-// person compares between the Helper and Firmary.
+// person compares between the Link and Firmary.
 //
-// The code is a commit-then-reveal short authentication string. On each connection the Helper picks a fresh
+// The code is a commit-then-reveal short authentication string. On each connection the Link picks a fresh
 // random helper nonce Nh and sends Commit(pub, Nh) with its auth message. Only then does the relay send its
-// pairing nonce Nr, and only after that does the Helper reveal Nh. Code = H(pub, Nr, Nh). Each side's randomness is
-// fixed before it sees the other's, so a relay impersonator can't grind a nonce that makes the Helper show the code
+// pairing nonce Nr, and only after that does the Link reveal Nh. Code = H(pub, Nr, Nh). Each side's randomness is
+// fixed before it sees the other's, so a relay impersonator can't grind a nonce that makes the Link show the code
 // of a different key: it gets one 2^-40 guess per attempt.
 package pairing
 
@@ -127,7 +127,7 @@ func Commit(pub ed25519.PublicKey, helperNonce []byte) []byte {
 
 // Code is the pairing code: the first 40 bits of SHA-256(codeContext || 0x00 || pub || Nr || Nh), Crockford
 // base32, shown as XXXX-XXXX. Every input has a fixed size (32 bytes each), so the concatenation is unambiguous.
-// The Helper computes it itself and Firmary computes the same value for the pending key; the person confirms that
+// The Link computes it itself and Firmary computes the same value for the pending key; the person confirms that
 // the two match.
 func Code(pub ed25519.PublicKey, relayNonce, helperNonce []byte) string {
 	h := sha256.New()

@@ -26,7 +26,7 @@ import (
 
 var b64 = base64.RawURLEncoding
 
-// scriptedRelay runs script on the Helper's first connection; later connections are closed at once.
+// scriptedRelay runs script on the Link's first connection; later connections are closed at once.
 func scriptedRelay(t *testing.T, script func(c *websocket.Conn)) string {
 	t.Helper()
 	var n atomic.Int32
@@ -67,7 +67,7 @@ func nonce() []byte {
 	return b
 }
 
-// TestPairingCommitThenReveal checks the Helper's half of the pairing protocol: it commits to its nonce before it
+// TestPairingCommitThenReveal checks the Link's half of the pairing protocol: it commits to its nonce before it
 // sees the relay's, reveals it only after, shows the code over both, and accepts only one relay nonce per
 // connection.
 func TestPairingCommitThenReveal(t *testing.T) {
@@ -119,7 +119,7 @@ func TestPairingCommitThenReveal(t *testing.T) {
 		t.Fatalf("shown code %s is not the code over pub, Nr and Nh", code)
 	}
 	if res.secondReveal {
-		t.Fatal("the Helper answered a second relay nonce on the same connection")
+		t.Fatal("the Link answered a second relay nonce on the same connection")
 	}
 }
 
@@ -138,7 +138,7 @@ func TestPairingRefusesBadRelayNonce(t *testing.T) {
 	shown := make(chan string, 4)
 	runHelper(t, url, shown)
 	if <-revealed {
-		t.Fatal("the Helper revealed its nonce for a short relay nonce")
+		t.Fatal("the Link revealed its nonce for a short relay nonce")
 	}
 	if first := <-shown; first != "reached" {
 		t.Fatalf("first message shown was %q, want the reached line", first)
@@ -158,13 +158,13 @@ func (noTurns) Cancel(string)                                        {}
 func (noTurns) Hello(context.Context, pairing.Record) protocol.Hello { return protocol.Hello{} }
 
 // TestPairingAcceptStep (security re-review M3): once the code is confirmed in Firmary, the relay offers the binding
-// and the Helper pairs only on the person's yes. A no sends pairing_decline and starts over with a new key. With
-// nobody to ask, the Helper sends nothing: the binding is neither accepted nor revoked.
+// and the Link pairs only on the person's yes. A no sends pairing_decline and starts over with a new key. With
+// nobody to ask, the Link sends nothing: the binding is neither accepted nor revoked.
 func TestPairingAcceptStep(t *testing.T) {
 	for _, c := range []struct {
 		name             string
 		accept, answered bool
-		want             string // the Helper's answer to the offer; "" for none
+		want             string // the Link's answer to the offer; "" for none
 	}{
 		{"accept", true, true, protocol.TypePairingAccept},
 		{"decline", false, true, protocol.TypePairingDecline},

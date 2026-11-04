@@ -37,7 +37,7 @@ func fixture(t *testing.T, file, name string) json.RawMessage {
 	return nil
 }
 
-// TestTurnFixtureMatchesTicketPromptHash: the shared turn fixture, decoded by the Helper, hashes to the shared
+// TestTurnFixtureMatchesTicketPromptHash: the shared turn fixture, decoded by the Link, hashes to the shared
 // ticket fixture's promptHash. The schema is a JSON string and its decoded value is hashed.
 func TestTurnFixtureMatchesTicketPromptHash(t *testing.T) {
 	turn, err := Decode[Turn](fixture(t, "relay-to-helper.fixtures.json", "turn with structured output schema (promptHash vector)"))

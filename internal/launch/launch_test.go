@@ -85,7 +85,7 @@ func TestParseValues(t *testing.T) {
 }
 
 // TestParseRefusesWhatGoWouldAccept: cases the contract refuses but Go's own JSON decoding would let through, plus
-// the Helper's own checks (repeated tools, the prompt's size in UTF-16 units).
+// the Link's own checks (repeated tools, the prompt's size in UTF-16 units).
 func TestParseRefusesWhatGoWouldAccept(t *testing.T) {
 	long := func(n int, s string) string { return `{"schema":1,"systemPrompt":"` + strings.Repeat(s, n) + `"}` }
 	for _, c := range []struct{ name, doc string }{
