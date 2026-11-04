@@ -19,6 +19,18 @@
       }
     },
     {
+      "name": "pairing reveal with device details",
+      "document": {
+        "type": "pairing_reveal",
+        "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+        "device": {
+          "name": "Dana's MacBook Pro",
+          "os": "darwin",
+          "arch": "arm64"
+        }
+      }
+    },
+    {
       "name": "hello from a signed-in Helper",
       "document": {
         "type": "hello",
@@ -95,6 +107,20 @@
         "type": "signin_step",
         "provider": "claude-code",
         "kind": "browser"
+      }
+    },
+    {
+      "name": "pairing accepted on the computer",
+      "document": {
+        "type": "pairing_accept",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f"
+      }
+    },
+    {
+      "name": "pairing declined on the computer",
+      "document": {
+        "type": "pairing_decline",
+        "deviceId": "6f1c2a4e-8b3d-4c5e-9f10-2a3b4c5d6e7f"
       }
     },
     {
@@ -395,6 +421,17 @@
       }
     },
     {
+      "name": "pairing reveal with an unknown device os",
+      "path": "/device/os",
+      "document": {
+        "type": "pairing_reveal",
+        "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+        "device": {
+          "os": "plan9"
+        }
+      }
+    },
+    {
       "name": "hello provider without the managed flag",
       "path": "/providers/0/managed",
       "document": {
@@ -456,6 +493,13 @@
           }
         ],
         "acceptedConsentRevision": 0
+      }
+    },
+    {
+      "name": "pairing accept without the offered device",
+      "path": "/deviceId",
+      "document": {
+        "type": "pairing_accept"
       }
     },
     {

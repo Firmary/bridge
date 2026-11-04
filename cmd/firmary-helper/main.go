@@ -33,15 +33,18 @@ import (
 var version = "0.0.0-dev"
 
 // environment is one Firmary environment: its relay and the ticket-signing public keys pinned for it (current and
-// next). The relays and keys don't exist yet (slice S3); with no pinned key the Helper refuses every turn.
+// next). With no pinned key the Helper refuses every turn.
 type environment struct {
 	relayURL   string
 	ticketKeys []string // base64 Ed25519 public keys
 }
 
 var environments = map[string]environment{
-	"prod": {relayURL: "wss://relay.prod.firmary.app/"},
-	"dev":  {relayURL: "wss://relay.dev.firmary.app/"},
+	"prod": {relayURL: "wss://relay.prod.firmary.app/", ticketKeys: []string{
+		"tvfbE9S5T4z4RErCm4DExS9KXz8GQRqFyXtF8mGZ+2w=", // current
+		"/ERMRvlkYfEhIAD+tqkxjr6vwOdMbElVfEY+ycmiRbI=", // next
+	}},
+	"dev": {relayURL: "wss://relay.dev.firmary.app/"},
 }
 
 func main() {
@@ -159,6 +162,10 @@ func run(args []string) error {
 		return err
 	}
 	out := &console.Printer{W: os.Stdout, Terminal: console.IsTerminal(os.Stdout)}
+	if console.IsTerminal(os.Stdin) {
+		// Only a person at a terminal can accept a pairing offer.
+		out.In = console.Lines(os.Stdin)
+	}
 	out.Banner(version, runtime.GOOS, runtime.GOARCH)
 	pin := claudecode.BuiltInPin
 	if err := drv.Ensure(ctx, pin); err != nil {
@@ -178,6 +185,7 @@ func run(args []string) error {
 		ShowConnected:   func() { reached.Do(out.Reached) },
 		ShowPairingCode: out.PairingCode,
 		ShowPaired:      out.Paired,
+		AskAccept:       out.ConfirmPairing,
 	})
 	if err != nil {
 		return err
