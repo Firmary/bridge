@@ -546,6 +546,11 @@ func serviceCmd(args []string) error {
 		if !update.IsRelease(version) && c.env == "prod" && os.Getenv("FIRMARY_LINK_ALLOW_DEV_SERVICE") == "" {
 			return errors.New("a development build doesn't install a service")
 		}
+		if runtime.GOOS == "linux" {
+			// systemd starts the unit without this shell's XDG_DATA_HOME (or HOME, under sudo -u), so name the data
+			// directory `pair` and `sign-in` just used, or the service would look for its pairing somewhere else.
+			cfg.DataDir = c.dataDir
+		}
 		res, err := service.Install(cfg)
 		if err != nil {
 			return err
