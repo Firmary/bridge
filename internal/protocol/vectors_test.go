@@ -62,7 +62,7 @@ func TestSharedCryptoVectors(t *testing.T) {
 	}
 
 	for _, c := range v.Auth {
-		// Load the synthetic seed through the Helper's own key file path, then sign as the Helper does.
+		// Load the synthetic seed through the Link's own key file path, then sign as the Link does.
 		path := filepath.Join(t.TempDir(), "device.key")
 		if err := os.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(b64(t, c.TestSeed))), 0o600); err != nil {
 			t.Fatal(err)
@@ -95,7 +95,7 @@ func TestSharedCryptoVectors(t *testing.T) {
 	}
 }
 
-// roundTrip decodes doc into the Helper's type and encodes it again, as generic JSON.
+// roundTrip decodes doc into the Link's type and encodes it again, as generic JSON.
 func roundTrip[T any](t *testing.T, doc json.RawMessage) any {
 	t.Helper()
 	m, err := Decode[T](doc)
@@ -113,12 +113,12 @@ func roundTrip[T any](t *testing.T, doc json.RawMessage) any {
 	return out
 }
 
-// unmodelled are contract fields the Helper doesn't read or send yet; a fixture may carry them and the round trip
+// unmodelled are contract fields the Link doesn't read or send yet; a fixture may carry them and the round trip
 // drops them. Every other field must survive the round trip unchanged.
 var unmodelled = map[string]bool{
 	"reconnectReason": true, "updateFailure": true, // hello: self-update arrives in a later slice
 	"channel": true, // the stream-event fixture's unknown field from a newer sender
-	"device":  true, // pairing_reveal: the optional computer details the Helper doesn't send yet
+	"device":  true, // pairing_reveal: the optional computer details the Link doesn't send yet
 	"jti":     true, // a standard ticket claim the verifier doesn't need
 }
 
@@ -161,8 +161,8 @@ func same(got, want any) bool {
 	}
 }
 
-// TestSharedFixturesRoundTrip: each valid shared fixture, decoded into the Helper's type and encoded again, comes
-// back unchanged. This catches field names and empty values the Helper would read or send differently from the
+// TestSharedFixturesRoundTrip: each valid shared fixture, decoded into the Link's type and encoded again, comes
+// back unchanged. This catches field names and empty values the Link would read or send differently from the
 // contract.
 func TestSharedFixturesRoundTrip(t *testing.T) {
 	byType := map[string]func(*testing.T, json.RawMessage) any{
@@ -173,7 +173,7 @@ func TestSharedFixturesRoundTrip(t *testing.T) {
 		TypePairingOffer: roundTrip[PairingOffer], TypePairingAccept: roundTrip[PairingAnswer],
 		TypePairingDecline: roundTrip[PairingAnswer],
 	}
-	// Messages the Helper doesn't implement yet (provider sign-in arrives in a later slice).
+	// Messages the Link doesn't implement yet (provider sign-in arrives in a later slice).
 	notYet := map[string]bool{"signin": true, "signout": true, "signin_step": true}
 
 	check := func(file string, decode func(*testing.T, json.RawMessage) (func(*testing.T, json.RawMessage) any, bool)) {
@@ -188,7 +188,7 @@ func TestSharedFixturesRoundTrip(t *testing.T) {
 			}
 			if got := fn(t, f.Document); !same(got, want) {
 				b, _ := json.Marshal(got)
-				t.Errorf("%s %q: the Helper would send %s", file, f.Name, b)
+				t.Errorf("%s %q: the Link would send %s", file, f.Name, b)
 			}
 		}
 	}
@@ -211,7 +211,7 @@ func TestSharedFixturesRoundTrip(t *testing.T) {
 	check("ticket-claims.fixtures.json", only(roundTrip[ticket.Claims]))
 }
 
-// TestLaunchProfileHashVectors: the Helper's ProfileHash matches Firmary's launchProfileHash on the shared vectors,
+// TestLaunchProfileHashVectors: the Link's ProfileHash matches Firmary's launchProfileHash on the shared vectors,
 // and the shared turn fixture's profile hashes to the shared ticket fixture's profileHash.
 func TestLaunchProfileHashVectors(t *testing.T) {
 	raw, err := os.ReadFile("testdata/launch-profile.vectors.json")

@@ -1,6 +1,6 @@
-// Package devicekey holds the Helper's Ed25519 device key.
+// Package devicekey holds the Link's Ed25519 device key.
 //
-// The key is the only long-lived credential the Helper has, and it is not a Firmary secret: the relay knows only
+// The key is the only long-lived credential the Link has, and it is not a Firmary secret: the relay knows only
 // its public half. In this slice the private key is a 0600 file (the headless/VPS form in the protocol). Desktop
 // installs move it into the OS keychain in a later slice.
 package devicekey

@@ -1,4 +1,4 @@
-// Package fsperm checks that the Helper's data directory and key file belong to the person running it.
+// Package fsperm checks that the Link's data directory and key file belong to the person running it.
 package fsperm
 
 import "io/fs"

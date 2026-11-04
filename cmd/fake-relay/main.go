@@ -1,4 +1,4 @@
-// Command fake-relay runs the fake relay on loopback for trying the Helper by hand. It pairs the first Helper that
+// Command fake-relay runs the fake relay on loopback for trying the Link by hand. It pairs the first Link that
 // connects, then sends each line typed on stdin as a turn and prints the streamed reply. Use synthetic prompts.
 package main
 
@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("fake relay: %s\nticket key: %s\n", r.URL, *keyOut)
-	fmt.Printf("run: firmary-helper run --env local --relay-url %s --ticket-key-file %s\n", r.URL, *keyOut)
+	fmt.Printf("run: firmary-link run --env local --relay-url %s --ticket-key-file %s\n", r.URL, *keyOut)
 
 	go func() {
 		for {

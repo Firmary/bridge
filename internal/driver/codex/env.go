@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// passthrough is the allowlist of inherited environment variables. Everything else in the Helper's environment
+// passthrough is the allowlist of inherited environment variables. Everything else in the Link's environment
 // (OPENAI_API_KEY, CODEX_API_KEY, OPENAI_BASE_URL, the user's own CODEX_HOME, RUST_LOG, cloud credentials, other
 // providers' keys, ...) is dropped, so the pinned Codex can only use the ChatGPT plan signed in to its profile.
 var passthrough = map[string]bool{

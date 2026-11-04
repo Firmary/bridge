@@ -83,7 +83,7 @@ func TestEnsureVerifiesSignatureAndPin(t *testing.T) {
 }
 
 // TestEnvironmentScrub runs a turn with a fake claude that dumps what it received. Only allowlisted variables
-// may reach it, plus the Helper's own profile and updater settings.
+// may reach it, plus the Link's own profile and updater settings.
 func TestEnvironmentScrub(t *testing.T) {
 	dump := t.TempDir()
 	rel := testkit.NewRelease(t, "2.1.304", testPlatform, testkit.FakeClaude(dump))

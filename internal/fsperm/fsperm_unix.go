@@ -1,6 +1,6 @@
 //go:build !windows
 
-// Package fsperm checks that the Helper's data directory and key file belong to the person running it. Another
+// Package fsperm checks that the Link's data directory and key file belong to the person running it. Another
 // local user who owns or can write them could swap the verified Claude Code binary, plant a device key or pairing,
 // or read the logs.
 package fsperm
