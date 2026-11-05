@@ -50,12 +50,13 @@ type Relay struct {
 	// AutoConfirm pairs a pending device at once, as if the person confirmed the code.
 	AutoConfirm bool
 
-	Codes       chan string // the pending code of each pairing: issued (v2) or computed (v1)
-	Reveals     chan protocol.PairingReveal
-	Answers     chan string // pairing_accept or pairing_decline, as the Link answered an offer
-	Hellos      chan protocol.Hello
-	Events      chan protocol.EventMsg
-	SigninSteps chan protocol.SigninStep
+	Codes         chan string // the pending code of each pairing: issued (v2) or computed (v1)
+	Reveals       chan protocol.PairingReveal
+	Answers       chan string // pairing_accept or pairing_decline, as the Link answered an offer
+	Hellos        chan protocol.Hello
+	Events        chan protocol.EventMsg
+	SigninSteps   chan protocol.SigninStep
+	SigninResults chan protocol.SigninResult
 
 	srv *http.Server
 	ln  net.Listener
@@ -126,7 +127,8 @@ func Start(addr string) (*Relay, error) {
 		URL: "ws://" + ln.Addr().String() + "/", TicketKey: priv, TicketPub: pub,
 		Codes: make(chan string, 64), Reveals: make(chan protocol.PairingReveal, 64), Answers: make(chan string, 64),
 		Hellos: make(chan protocol.Hello, 64), Events: make(chan protocol.EventMsg, 1024), SigninSteps: make(chan protocol.SigninStep, 64),
-		ln: ln, devices: map[string]Device{}, pending: map[string]*pend{}, issued: map[string]issued{},
+		SigninResults: make(chan protocol.SigninResult, 64),
+		ln:            ln, devices: map[string]Device{}, pending: map[string]*pend{}, issued: map[string]issued{},
 	}
 	r.srv = &http.Server{Handler: http.HandlerFunc(r.serve), ReadHeaderTimeout: 5 * time.Second}
 	go r.srv.Serve(ln)
@@ -341,6 +343,10 @@ func (r *Relay) serve(w http.ResponseWriter, req *http.Request) {
 			var st protocol.SigninStep
 			json.Unmarshal(b, &st)
 			r.SigninSteps <- st
+		case protocol.TypeSigninResult:
+			var res protocol.SigninResult
+			json.Unmarshal(b, &res)
+			r.SigninResults <- res
 		}
 	}
 }

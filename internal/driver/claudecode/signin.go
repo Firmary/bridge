@@ -56,9 +56,11 @@ func (s *signInScanner) Write(p []byte) (int, error) {
 
 // SignIn runs `claude auth login --claudeai` (a Claude subscription, never an API key) in the profile.
 //
-// Browser: Claude Code opens the person's browser on Anthropic's page and takes the result on a short-lived
-// localhost callback of its own; ui.Step gets the fallback link. Paste code: ui.Step gets the link to open on any
-// browser, and ui.Code asks for the code Anthropic's page shows after Authorize, which is written to Claude Code.
+// Claude Code does both at once: it opens the person's browser on Anthropic's page, taking the result on a short-lived
+// localhost callback of its own, and prints a link to open on any browser, whose page ends on a code to paste back
+// (the only link it prints). ui.Step gets that link. ui.Code, if set, asks for the code, which is written to Claude
+// Code; for the browser kind it is optional (Claude Code may finish through its own callback first), for paste code
+// it is required. Without ui.Code the browser kind can only finish in the browser Claude Code opened.
 // SignIn returns nil only if the profile then reports signed in. The sign-in is kept in the profile's own
 // configuration directory (on macOS, Claude Code keeps it in the login Keychain under that directory's own item), so
 // the person's own Claude Code is never touched.
@@ -101,26 +103,26 @@ func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, ui d
 	go func() { exited <- cmd.Wait() }()
 
 	var runErr error
+	codeGiven := false
 	select {
 	case u := <-sc.found:
 		if ui.Step != nil {
 			ui.Step(driver.SignInStep{Kind: kind, URL: u})
 		}
-		if kind == driver.SignInPasteCode {
+		if ui.Code != nil {
 			code, waitErr, gone, cerr := askCode(ctx, ui.Code, exited)
 			switch {
 			case gone:
-				// Claude Code ended before the person gave a code.
+				// Claude Code ended before the person gave a code: through its own browser callback, or failing. The
+				// status check below decides.
 				runErr = waitErr
-				if runErr == nil {
-					runErr = errors.New("exited before the code was given")
-				}
 			case cerr != nil:
 				cancel()
 				<-exited
 				return cerr
 			default:
 				_, _ = io.WriteString(stdin, code+"\n")
+				codeGiven = true
 				runErr = <-exited
 			}
 		} else {
@@ -140,6 +142,9 @@ func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, ui d
 		return &driver.Failure{Class: protocol.ClassTransient, Pattern: "signin_timeout"}
 	case ctx.Err() != nil:
 		return &driver.Failure{Class: protocol.ClassFatal, Pattern: "cancelled"}
+	case runErr != nil && codeGiven:
+		// Anthropic refused the code (Claude Code 2.1.304 exits at once: "Login failed: ... 400").
+		return &driver.Failure{Class: protocol.ClassAuth, Pattern: "signin_code_refused"}
 	case runErr != nil:
 		return &driver.Failure{Class: protocol.ClassAuth, Pattern: "signin_failed"}
 	}
