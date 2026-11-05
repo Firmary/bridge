@@ -1,6 +1,10 @@
 **Beta and unsigned.** Firmary Link connects your own Claude or ChatGPT plan to Firmary. This build isn't signed by
 Apple or Microsoft yet, so your computer warns the first time you open it. A signed build is coming.
 
+**New in 0.3.1:** on Windows, **Enter pairing code…** opens the code box again (in 0.3.0 the box stayed hidden, so
+nothing seemed to happen). The box also opens by itself the first time, without waiting for Claude Code and Codex to
+download.
+
 ## Install
 
 - **Mac:** open `Firmary-Link.dmg` and drag **Firmary Link** to **Applications**, then open it. The first time, macOS
