@@ -150,15 +150,20 @@ func (a *App) ready() {
 
 func (a *App) runAgent() {
 	ag := a.Agent
-	for _, p := range agent.Providers {
-		a.setBusy(p.ID, "Setting up "+p.App+"…")
-		err := ag.Ensure(a.ctx, p.ID)
-		a.setBusy(p.ID, "")
-		if err != nil && a.ctx.Err() == nil {
-			notify.Show(brand.Name, p.App+" couldn't be set up. "+brand.Name+" tries again when it restarts.")
+	// The provider apps set up alongside the connection, so a computer that isn't paired asks for the code at once
+	// rather than after two downloads. A request that comes before its app is ready fails as not installed.
+	go func() {
+		for _, p := range agent.Providers {
+			a.setBusy(p.ID, "Setting up "+p.App+"…")
+			err := ag.Ensure(a.ctx, p.ID)
+			a.setBusy(p.ID, "")
+			if err != nil && a.ctx.Err() == nil {
+				notify.Show(brand.Name, p.App+" couldn't be set up. "+brand.Name+" tries again when it restarts.")
+			}
 		}
-	}
-	a.refreshProviders()
+		a.refreshProviders()
+		ag.RefreshHello()
+	}()
 	go func() {
 		t := time.NewTicker(15 * time.Minute)
 		defer t.Stop()
@@ -237,7 +242,7 @@ func (a *App) askCode(msg string) {
 		notify.Show(brand.Name+" isn't paired", "To pair, open a terminal and run: "+brand.Command+" pair")
 		return
 	}
-	prompt := "Enter the pairing code Firmary shows in Settings › Connections, like ABCD-EFGH."
+	prompt := "In Firmary, open Settings › Connections and click Show a pairing code. Type that code here."
 	if msg != "" {
 		prompt = msg
 	}
