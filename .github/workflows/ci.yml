@@ -63,3 +63,17 @@ jobs:
         run: |
           go build ./...
           go vet ./...
+
+  windows:
+    # What only runs on Windows: the pairing-code box (a real dialog on the runner's desktop) and the Windows paths.
+    # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
