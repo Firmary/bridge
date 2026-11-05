@@ -105,8 +105,14 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
+	refresh := make(chan struct{}, 1)
 	h := &helper.Helper{Providers: []helper.Provider{{Adapter: helper.AdapterClaudeCode, Driver: drv}}, Verifier: ticket.NewVerifier([]ed25519.PublicKey{r.TicketPub}, nil),
-		DataDir: data, Version: "0.0.0-test", Ring: "internal", Log: log}
+		DataDir: data, Version: "0.0.0-test", Ring: "internal", Log: log, Changed: func() {
+			select {
+			case refresh <- struct{}{}:
+			default:
+			}
+		}}
 	if configure != nil {
 		configure(h)
 	}
@@ -116,7 +122,7 @@ func startRig(t *testing.T, configure func(*helper.Helper)) *rig {
 		HelperVersion: "0.0.0-test", Log: log, Handler: h, ShowPairingCode: func(c string) { g.shown <- c },
 		ShowPaired: func(user, firm string) { g.paired <- user + " · " + firm },
 		AskAccept:  func(context.Context, string, string, string) (bool, bool) { return true, true },
-		MinBackoff: 10 * time.Millisecond, MaxBackoff: 50 * time.Millisecond})
+		Refresh:    refresh, MinBackoff: 10 * time.Millisecond, MaxBackoff: 50 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,6 +430,69 @@ func TestLaunchProfile(t *testing.T) {
 		if !strings.Contains(written, `"reason":"`+reason+`"`) {
 			t.Errorf("log has no %s rejection", reason)
 		}
+	}
+}
+
+// slowDriver's Status waits until gate closes, like a provider's first status check on a fresh profile.
+type slowDriver struct {
+	driver.Driver
+	gate     chan struct{}
+	statuses atomic.Int32
+}
+
+func (d *slowDriver) Status(ctx context.Context, p driver.Profile) (driver.ProviderStatus, error) {
+	d.statuses.Add(1)
+	<-d.gate
+	return d.Driver.Status(ctx, p)
+}
+
+// TestHelloDoesNotWaitForSlowProvider: a provider status check that outlasts the hello budget doesn't hold hello
+// back (the relay drops a connection whose hello is 30 seconds late). Hello reports the provider signed out until
+// the check finishes, then a refresh hello reports what it found; a turn arriving meanwhile shares the running check.
+func TestHelloDoesNotWaitForSlowProvider(t *testing.T) {
+	sd := &slowDriver{gate: make(chan struct{})}
+	start := time.Now()
+	g := startRig(t, func(h *helper.Helper) {
+		h.HelloBudget = 50 * time.Millisecond
+		sd.Driver = h.Providers[0].Driver
+		h.Providers[0].Driver = sd
+	})
+	if p := g.hello.Providers; len(p) != 1 || p[0] != (protocol.ProviderInfo{ID: claudecode.ID}) {
+		t.Fatalf("hello while the check runs: %+v", p)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("pairing and hello took %v", d)
+	}
+
+	// A turn now joins the check that is still running instead of starting a second one.
+	c := g.r.Claims(g.dev, pinVersion, "", testkit.PromptCanary)
+	if err := g.r.SendTurn(c, "", testkit.PromptCanary); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	close(sd.gate)
+	if evs := terminal(t, g.r, c.TicketID); evs[len(evs)-1].T != protocol.EvDone {
+		t.Fatalf("turn events %+v", evs)
+	}
+
+	refreshed := recv(t, g.r.Hellos, "refresh hello")
+	if p := refreshed.Providers[0]; !p.SignedIn || p.AccountType != "team" || p.PinnedVersion != pinVersion {
+		t.Fatalf("refresh hello %+v", p)
+	}
+	// One check for the first hello and the turn together, a second for the refresh, and nothing after it: the
+	// refresh found what the first check had, so no further hello is due.
+	select {
+	case h := <-g.r.Hellos:
+		t.Fatalf("unexpected hello %+v", h)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if n := sd.statuses.Load(); n != 2 {
+		t.Fatalf("%d status checks, want 2", n)
+	}
+	g.stop()
+	written := testkit.ReadDir(t, filepath.Join(g.data, "logs"))
+	if !strings.Contains(written, `"reason":"status_pending"`) {
+		t.Error("log has no status_pending")
 	}
 }
 
