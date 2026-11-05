@@ -558,7 +558,8 @@
           "type": "string",
           "enum": [
             "browser",
-            "device_link"
+            "device_link",
+            "paste_code"
           ]
         },
         "url": {
@@ -569,12 +570,44 @@
         "userCode": {
           "type": "string",
           "pattern": "^[A-Za-z0-9-]{4,32}$"
+        },
+        "pasteCode": {
+          "type": "boolean"
         }
       },
       "required": [
         "type",
         "provider",
         "kind"
+      ],
+      "additionalProperties": {}
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "signin_result"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "claude-code",
+            "codex"
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "pattern": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+        }
+      },
+      "required": [
+        "type",
+        "provider",
+        "ok"
       ],
       "additionalProperties": {}
     }
