@@ -1,9 +1,9 @@
-// Package service starts the Link with the computer: as an always-on service (a systemd unit on Linux, a launchd
-// agent on macOS, a logon task on Windows) and as the desktop app's "Open at login" item.
+// Package service starts the Link with the computer: as an always-on service (a systemd unit on Linux, or a background
+// process on a Linux server without systemd; a launchd agent on macOS; a logon task on Windows) and as the desktop
+// app's "Open at login" item.
 package service
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Firmary/bridge/internal/brand"
+	"github.com/Firmary/bridge/internal/datadir"
 )
 
 // Config says what the service runs.
@@ -32,7 +33,7 @@ const UnitName = brand.Command + ".service"
 type Status struct {
 	Installed bool
 	Running   bool
-	Kind      string // "systemd user unit", "systemd system unit", "launchd agent", "logon task", "login item"
+	Kind      string // "systemd user unit", "systemd system unit", "background process", "launchd agent", "logon task", "login item"
 	Path      string
 	Detail    string
 }
@@ -49,6 +50,17 @@ func quoteSystemd(s string) string {
 	}
 	return strconv.Quote(s)
 }
+
+// dataDir is the data directory the service uses.
+func (c Config) dataDir() string {
+	if c.DataDir != "" {
+		return c.DataDir
+	}
+	return datadir.Default()
+}
+
+// SuperviseCommand is the hidden command that runs the background supervisor (see Supervise).
+const SuperviseCommand = "supervise"
 
 func (c Config) args() []string {
 	a := append([]string{}, c.Args...)
@@ -121,13 +133,41 @@ type Result struct {
 	Path string
 	// Lingering is true when a Linux user unit keeps running after the person logs out.
 	Lingering bool
+	// Background is true on a Linux server without systemd: the Link runs as a background process that starts it
+	// again whenever it stops. AtBoot says it also starts again when the server restarts (with cron).
+	Background, AtBoot bool
+}
+
+// systemdBooted reports whether systemd runs this computer (sd_booted). A container or WSL can have systemctl
+// installed without systemd running.
+var systemdBooted = func() bool {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return false
+	}
+	fi, err := os.Stat("/run/systemd/system")
+	return err == nil && fi.IsDir()
+}
+
+// installLinux installs the systemd unit where systemd runs and works for this user, and the background process
+// otherwise, so the line Firmary shows works on any Linux server.
+func installLinux(c Config) (Result, error) {
+	if systemdBooted() {
+		res, err := installSystemd(c)
+		if err == nil {
+			_ = uninstallBackground(c)
+			return res, nil
+		}
+		// Most often a user without a systemd user session (su instead of SSH). Leave no unit behind.
+		_ = os.Remove(unitPath(c))
+	}
+	return installBackground(c)
 }
 
 // Install installs and starts the always-on service.
 func Install(c Config) (Result, error) {
 	switch runtime.GOOS {
 	case "linux":
-		return installSystemd(c)
+		return installLinux(c)
 	case "darwin":
 		return installLaunchd(c, true)
 	case "windows":
@@ -140,6 +180,12 @@ func Install(c Config) (Result, error) {
 func Uninstall(c Config) error {
 	switch runtime.GOOS {
 	case "linux":
+		if err := uninstallBackground(c); err != nil {
+			return err
+		}
+		if !systemdBooted() {
+			return nil
+		}
 		return uninstallSystemd(c)
 	case "darwin":
 		return uninstallLaunchd(c)
@@ -153,6 +199,9 @@ func Uninstall(c Config) error {
 func Query(c Config) Status {
 	switch runtime.GOOS {
 	case "linux":
+		if backgroundInstalled(c) {
+			return queryBackground(c)
+		}
 		return querySystemd(c)
 	case "darwin":
 		return queryLaunchd(c)
@@ -170,6 +219,9 @@ func Stop(c Config) error {
 	}
 	switch runtime.GOOS {
 	case "linux":
+		if backgroundInstalled(c) {
+			return stopBackground(c)
+		}
 		return run(systemctl(c, "stop", UnitName))
 	case "darwin":
 		return run(exec.Command("launchctl", "bootout", launchdTarget()))
@@ -187,6 +239,9 @@ func Start(c Config) error {
 	}
 	switch runtime.GOOS {
 	case "linux":
+		if backgroundInstalled(c) {
+			return startBackground(c)
+		}
 		return run(systemctl(c, "start", UnitName))
 	case "darwin":
 		return run(exec.Command("launchctl", "bootstrap", launchdDomain(), launchdPlist(c.Home)))
@@ -197,9 +252,6 @@ func Start(c Config) error {
 }
 
 func installSystemd(c Config) (Result, error) {
-	if _, err := exec.LookPath("systemctl"); err != nil {
-		return Result{}, errors.New("systemd isn't available here; run `firmary-link run` under your own supervisor instead")
-	}
 	path := unitPath(c)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return Result{}, err

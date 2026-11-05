@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -102,6 +103,8 @@ func main() {
 		err = openAtLogin(args)
 	case "self-test":
 		err = selfTest(args)
+	case service.SuperviseCommand:
+		err = supervise(args)
 	default:
 		usage()
 	}
@@ -665,8 +668,17 @@ func serviceCmd(args []string) error {
 			return err
 		}
 		server := runtime.GOOS == "linux"
-		(&console.Printer{W: os.Stdout}).ServiceInstalled(server && res.Lingering)
-		if server && !res.Lingering {
+		out := &console.Printer{W: os.Stdout}
+		if res.Background {
+			start := append([]string{commandName(cfg.Exe), "service", "install"}, cfg.Args[1:]...) // after "run"
+			if c.dataDirSet {
+				start = append(start, "--data-dir", c.dataDir)
+			}
+			out.BackgroundStarted(res.AtBoot, strings.Join(start, " "))
+		} else {
+			out.ServiceInstalled(server && res.Lingering)
+		}
+		if server && !res.Background && !res.Lingering {
 			fmt.Println("    It starts when you log in. To keep it running after you log out, ask an admin to run:")
 			fmt.Printf("    sudo loginctl enable-linger %s\n", os.Getenv("USER"))
 		}
@@ -682,6 +694,27 @@ func serviceCmd(args []string) error {
 		return errors.New("service install, uninstall or status")
 	}
 	return nil
+}
+
+// commandName is how the person runs the installed Link: by name when that name finds it on PATH, else its full path.
+func commandName(exe string) string {
+	if p, err := exec.LookPath(brand.Command); err == nil {
+		if r, err := filepath.EvalSymlinks(p); err == nil && r == exe {
+			return brand.Command
+		}
+	}
+	return exe
+}
+
+// supervise is the background supervisor on a Linux server without systemd (service.Supervise); service install
+// starts it, detached, and cron starts it when the server restarts.
+func supervise(args []string) error {
+	if len(args) != 1 {
+		return errors.New("supervise needs the data directory")
+	}
+	ctx, stop := signalContext()
+	defer stop()
+	return service.Supervise(ctx, args[0])
 }
 
 func openAtLogin(args []string) error {

@@ -5,12 +5,14 @@
 #   curl -fsSL https://github.com/Firmary/bridge/releases/latest/download/install.sh | sh -s -- --code ABCD-EFGH
 #
 # It downloads the latest release, checks it against checksums.txt, installs it, makes it start with the machine
-# and keep running after you log out, pairs it with that code (you confirm in Firmary) and offers to sign in to
-# Claude or ChatGPT. Without --code it asks for the code on a terminal.
+# and keep running after you log out (systemd where it runs, else a background process: Docker, WSL, small VPS
+# images), pairs it with that code (you confirm in Firmary) and leaves the next step, signing in to Claude or
+# ChatGPT, to Firmary. Without --code it asks for the code on a terminal.
 #
-# Options: --code ABCD-EFGH; for development also --env, --relay-url, --ticket-key-file (passed to firmary-link).
+# Options: --code ABCD-EFGH; --env dev for Firmary's dev environment; for local development also --env local,
+# --relay-url, --ticket-key-file (all passed to firmary-link).
 # FIRMARY_LINK_NONINTERACTIVE=1  don't ask anything here; print the commands instead
-# FIRMARY_LINK_NO_SERVICE=1      don't make it start with the machine
+# FIRMARY_LINK_NO_SERVICE=1      don't start it: you run `firmary-link run` under your own supervisor
 # FIRMARY_LINK_BASE_URL          download from somewhere else (https, or http on localhost for tests)
 set -eu
 
@@ -97,11 +99,7 @@ main() {
   # The commands to show the person: the bare name if it's on PATH, otherwise the full path.
   case ":${PATH:-}:" in
     *":$dir:"*) cmd=firmary-link ;;
-    *)
-      cmd=$bin
-      say "    $dir isn't on your PATH. To run firmary-link by name, add it:"
-      say "    export PATH=\"$dir:\$PATH\""
-      ;;
+    *) cmd=$bin ;;
   esac
 
   # curl's pipe is stdin, so anything interactive reads from the terminal instead.
@@ -111,11 +109,18 @@ main() {
   fi
 
   # Always on first, so the pairing below is for the server it will be (pair pauses the service while it runs).
+  # If it can't be set up (rare: systemd is used where it runs, a background process elsewhere), it still pairs and
+  # then runs in this window.
   service=0
-  if [ "${FIRMARY_LINK_NO_SERVICE:-}" != 1 ]; then
+  if [ "${FIRMARY_LINK_NO_SERVICE:-}" = 1 ]; then
+    service=none
+  else
     # shellcheck disable=SC2086 # link_args is checked above: words without spaces or globs
-    "$bin" service install $link_args
-    service=1
+    if "$bin" service install $link_args; then
+      service=1
+    else
+      say "    It couldn't be set up to start with this machine, so after pairing it runs in this window."
+    fi
   fi
 
   # The code came with the line, so pairing needs no terminal; one is used only if Firmary then asks this computer.
@@ -141,45 +146,33 @@ main() {
     say "    $cmd pair --code ABCD-EFGH"
   fi
 
-  if [ "$interactive" -eq 1 ]; then
-    sign_in
-  else
-    say ""
-    say "Sign in to Claude or ChatGPT with one of:"
-    say "    $cmd sign-in claude"
-    say "    $cmd sign-in chatgpt"
-    say "It shows a link that works on any browser, even a phone."
-  fi
-
   say ""
-  if [ "$service" -eq 1 ]; then
-    say "You can close this window; it keeps running."
-  else
-    say "Start it with: $cmd run"
+  if [ -n "$code" ] || [ "$interactive" -eq 1 ]; then
+    say "Next: go back to Firmary. It shows how to sign in to Claude or ChatGPT."
   fi
+  case "$service" in
+    1)
+      say "You can close this window; it keeps running."
+      later
+      ;;
+    none)
+      say "Start it under your own supervisor: $cmd run"
+      ;;
+    *)
+      say "Keep this window open: it runs here until you close it or press Ctrl-C."
+      later
+      rm -rf "$tmp" # exec skips the EXIT trap
+      # shellcheck disable=SC2086
+      exec "$bin" run $link_args </dev/null
+      ;;
+  esac
 }
 
-sign_in() {
-  while :; do
-    printf 'Sign in to Claude or ChatGPT now? [claude/chatgpt/skip] '
-    answer=
-    read -r answer </dev/tty || answer=skip
-    answer=$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')
-    case "$answer" in
-      claude | chatgpt)
-        # shellcheck disable=SC2086
-        if ! "$bin" sign-in "$answer" --device $link_args </dev/tty; then
-          say "Sign-in didn't finish. Try again any time: $cmd sign-in $answer"
-        fi
-        return 0
-        ;;
-      skip | s | no | n | "")
-        say "Sign in later with: $cmd sign-in claude   or   $cmd sign-in chatgpt"
-        return 0
-        ;;
-      *) say "Type claude, chatgpt or skip." ;;
-    esac
-  done
+# later names the command for this machine, when typing firmary-link won't find it in this shell.
+later() {
+  if [ "$cmd" != firmary-link ]; then
+    say "Later: $cmd is the command for this machine (status, sign-in, unpair)."
+  fi
 }
 
 download() {
