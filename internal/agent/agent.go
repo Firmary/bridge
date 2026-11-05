@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -423,12 +424,16 @@ func (a *Agent) Unpair() error {
 }
 
 // pendingSignIn is a provider sign-in the relay asked for: the pairing it signs in for, the latest connection's send,
-// and the step once known.
+// and the step once known. codes carries a code pasted into Firmary to the sign-in (nil when the provider takes none);
+// result answers the connection that sent the latest one, asked records that a code was asked for already.
 type pendingSignIn struct {
 	rec    pairing.Record
 	cancel context.CancelFunc
 	send   func(protocol.SigninStep)
 	last   *protocol.SigninStep
+	codes  chan string
+	result func(protocol.SigninResult)
+	asked  bool
 }
 
 // cancelSignIns stops every provider sign-in still running: they belong to a pairing that just ended, and their link
@@ -444,8 +449,8 @@ func (a *Agent) cancelSignIns() {
 
 // relaySignIn runs the provider sign-in Firmary asked for over the relay, in the paired person's profile, and passes
 // the provider's link (and code) to Firmary. The desktop app opens the browser here; a server uses the provider's
-// device link, opened on any browser. Claude Code has no device link (its server sign-in needs the code Anthropic's
-// page shows pasted back here, which the relay can't carry yet), so a server refuses that one.
+// device link, opened on any browser. Claude Code's link (on a server its only way) ends on a code Anthropic's page
+// shows: the person pastes it into Firmary, and it comes back through SignInCode.
 func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider string, step func(protocol.SigninStep), done func()) {
 	var p ProviderInfo
 	for _, q := range Providers {
@@ -461,11 +466,8 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 	kind := driver.SignInBrowser
 	if a.Opts.Kind == protocol.KindServer {
 		kind = d.Kinds()[1]
-		if kind != driver.SignInDeviceLink {
-			a.Log.Log(logx.ProviderSignIn, logx.Fields{Provider: p.ID, Reason: "relay_no_device_link"})
-			return
-		}
 	}
+	pasteCode := slices.Contains(d.Kinds(), driver.SignInPasteCode)
 	a.mu.Lock()
 	if a.signingIn == nil {
 		a.signingIn = map[string]*pendingSignIn{}
@@ -489,6 +491,33 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	s := &pendingSignIn{rec: rec, cancel: cancel, send: step}
+	ui := driver.SignInUI{Step: func(st driver.SignInStep) {
+		ps := protocol.SigninStep{Kind: st.Kind, URL: st.URL, UserCode: st.UserCode, PasteCode: pasteCode}
+		a.mu.Lock()
+		s.last = &ps
+		send := s.send
+		a.mu.Unlock()
+		send(ps)
+	}}
+	if pasteCode {
+		s.codes = make(chan string, 1)
+		ui.Code = func(ctx context.Context) (string, error) {
+			a.mu.Lock()
+			again, reply := s.asked, s.result
+			s.asked = true
+			a.mu.Unlock()
+			if again && reply != nil {
+				// The code pasted last isn't one from Anthropic's page; the sign-in keeps waiting for a good one.
+				reply(protocol.SigninResult{Pattern: "signin_code_invalid"})
+			}
+			select {
+			case c := <-s.codes:
+				return c, nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+	}
 	a.signingIn[p.ID] = s
 	a.mu.Unlock()
 	defer func() {
@@ -507,22 +536,44 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 		a.Log.Log(logx.ProviderSignIn, logx.Fields{Provider: p.ID, Reason: "ensure_failed"})
 		return
 	}
-	err := d.SignIn(ctx, helper.Profile(a.EnvDir, rec, p.ID), kind, driver.SignInUI{Step: func(st driver.SignInStep) {
-		ps := protocol.SigninStep{Kind: st.Kind, URL: st.URL, UserCode: st.UserCode}
-		a.mu.Lock()
-		s.last = &ps
-		send := s.send
-		a.mu.Unlock()
-		send(ps)
-	}})
+	err := d.SignIn(ctx, helper.Profile(a.EnvDir, rec, p.ID), kind, ui)
 	f := logx.Fields{Provider: p.ID, Reason: "relay_ok"}
+	res := protocol.SigninResult{OK: err == nil}
 	var fail *driver.Failure
 	if errors.As(err, &fail) {
 		f.Reason, f.ErrorClass, f.Pattern = "relay_failed", fail.Class, fail.Pattern
+		res.Pattern = fail.Pattern
 	} else if err != nil {
-		f.Reason = "relay_failed"
+		f.Reason, res.Pattern = "relay_failed", "signin_failed"
 	}
 	a.Log.Log(logx.ProviderSignIn, f)
+	a.mu.Lock()
+	reply := s.result
+	a.mu.Unlock()
+	if reply != nil {
+		// Firmary is waiting on the code it passed on: say at once whether it signed in.
+		reply(res)
+	}
+}
+
+// SignInCode passes a code the person pasted into Firmary to the provider sign-in running for that pairing. result
+// answers: at once if there is no such sign-in or it takes no code, else when the code is refused as malformed or
+// the sign-in ends. It never blocks.
+func (a *Agent) SignInCode(rec pairing.Record, provider, code string, result func(protocol.SigninResult)) {
+	a.mu.Lock()
+	s := a.signingIn[provider]
+	if s == nil || s.rec != rec || s.codes == nil {
+		a.mu.Unlock()
+		result(protocol.SigninResult{Pattern: "signin_not_running"})
+		return
+	}
+	s.result = result
+	a.mu.Unlock()
+	select {
+	case s.codes <- code:
+	default:
+		result(protocol.SigninResult{Pattern: "signin_busy"})
+	}
 }
 
 // Run keeps the relay connection up and the updater running until ctx ends.
@@ -547,6 +598,7 @@ func (a *Agent) Run(ctx context.Context, h Hooks) error {
 		SignIn: func(ctx context.Context, rec pairing.Record, provider string, step func(protocol.SigninStep)) {
 			a.relaySignIn(ctx, rec, provider, step, h.ProvidersChanged)
 		},
+		SignInCode: a.SignInCode,
 		ShowPaired: func(person, firm string) {
 			a.SaveNames(Names{Person: person, Firm: firm})
 			if h.Paired != nil {

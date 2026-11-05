@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -519,6 +520,11 @@ func signIn(args []string) error {
 	out.SigningIn(p.App, p.Account)
 	err = d.SignIn(ctx, prof, kind, driver.SignInUI{
 		Step: func(s driver.SignInStep) {
+			if s.Kind == driver.SignInBrowser && slices.Contains(d.Kinds(), driver.SignInPasteCode) {
+				// Claude Code's link ends on a code to paste here; its own browser sign-in needs none.
+				fmt.Printf("Your browser opens %s's sign-in page: sign in there. Or open this link on any browser, press Authorize and paste the code the page shows:\n  %s\n", p.Account, s.URL)
+				return
+			}
 			if s.Kind == driver.SignInBrowser {
 				fmt.Printf("Your browser opens %s's sign-in page. If it doesn't, open this link:\n  %s\nWaiting for sign-in…\n", p.Account, s.URL)
 				return

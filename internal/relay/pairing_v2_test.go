@@ -207,7 +207,8 @@ func TestPairingV2CodeRefused(t *testing.T) {
 	}
 }
 
-// TestRelaySignin: Firmary's signin runs the provider sign-in, and its link and code go back as signin_step.
+// TestRelaySignin: Firmary's signin runs the provider sign-in, and its link and code go back as signin_step; a code
+// pasted into Firmary (signin_code) reaches the sign-in, and its result goes back as signin_result.
 func TestRelaySignin(t *testing.T) {
 	r := newRelay(t)
 	r.AutoConfirm = true
@@ -216,6 +217,10 @@ func TestRelaySignin(t *testing.T) {
 		c.SignIn = func(_ context.Context, _ pairing.Record, provider string, step func(protocol.SigninStep)) {
 			asked <- provider
 			step(protocol.SigninStep{Kind: "device_link", URL: "https://auth.openai.com/codex/device", UserCode: "DWKQ-MPFZ"})
+		}
+		c.SignInCode = func(_ pairing.Record, provider, code string, result func(protocol.SigninResult)) {
+			asked <- provider + " " + code
+			result(protocol.SigninResult{OK: true})
 		}
 	})
 	got(t, r.Hellos, "hello")
@@ -229,5 +234,16 @@ func TestRelaySignin(t *testing.T) {
 		URL: "https://auth.openai.com/codex/device", UserCode: "DWKQ-MPFZ"}
 	if st := got(t, r.SigninSteps, "signin_step"); st != want {
 		t.Fatalf("signin_step %+v, want %+v", st, want)
+	}
+
+	if err := r.SendRaw(protocol.SigninCode{Type: protocol.TypeSigninCode, Provider: "claude-code", Code: "abc123456#def456789"}); err != nil {
+		t.Fatal(err)
+	}
+	if p := got(t, asked, "sign-in code"); p != "claude-code abc123456#def456789" {
+		t.Fatalf("code %q", p)
+	}
+	wantRes := protocol.SigninResult{Type: protocol.TypeSigninResult, Provider: "claude-code", OK: true}
+	if res := got(t, r.SigninResults, "signin_result"); res != wantRes {
+		t.Fatalf("signin_result %+v, want %+v", res, wantRes)
 	}
 }

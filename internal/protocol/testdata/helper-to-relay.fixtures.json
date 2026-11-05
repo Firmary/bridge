@@ -110,6 +110,43 @@
       }
     },
     {
+      "name": "browser sign-in step that takes a pasted code",
+      "document": {
+        "type": "signin_step",
+        "provider": "claude-code",
+        "kind": "browser",
+        "url": "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&state=c3RhdGUtMTIz",
+        "pasteCode": true
+      }
+    },
+    {
+      "name": "paste-code sign-in step (a server)",
+      "document": {
+        "type": "signin_step",
+        "provider": "claude-code",
+        "kind": "paste_code",
+        "url": "https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback&state=c3RhdGUtMTIz",
+        "pasteCode": true
+      }
+    },
+    {
+      "name": "sign-in finished",
+      "document": {
+        "type": "signin_result",
+        "provider": "claude-code",
+        "ok": true
+      }
+    },
+    {
+      "name": "pasted code refused",
+      "document": {
+        "type": "signin_result",
+        "provider": "claude-code",
+        "ok": false,
+        "pattern": "signin_code_refused"
+      }
+    },
+    {
       "name": "pairing accepted on the computer",
       "document": {
         "type": "pairing_accept",
@@ -331,6 +368,16 @@
         "provider": "codex",
         "kind": "device_link",
         "url": "http://auth.openai.com/codex/device"
+      }
+    },
+    {
+      "name": "sign-in result with provider text as its pattern",
+      "path": "/pattern",
+      "document": {
+        "type": "signin_result",
+        "provider": "claude-code",
+        "ok": false,
+        "pattern": "Login failed: Request failed with status code 400"
       }
     },
     {
