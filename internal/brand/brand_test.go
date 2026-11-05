@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// The product name must live in Name only, and the former name in FormerName only. Tests may spell them out to pin
+// The product name must live in Name only, and the former names in InstallName and FormerName only. Tests may spell them out to pin
 // the copy.
 func TestNameIsOnlyInThisFile(t *testing.T) {
 	root := filepath.Join("..", "..")
@@ -27,7 +27,7 @@ func TestNameIsOnlyInThisFile(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, n := range []string{Name, FormerName} {
+		for _, n := range []string{Name, InstallName, FormerName} {
 			if strings.Contains(string(b), n) {
 				t.Errorf("%s spells out %q; use package brand", path, n)
 			}
