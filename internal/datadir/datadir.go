@@ -19,7 +19,7 @@ func Paths(goos, home string, getenv func(string) string) (current, former strin
 	switch goos {
 	case "darwin":
 		base := filepath.Join(home, "Library", "Application Support")
-		return filepath.Join(base, brand.Name), filepath.Join(base, brand.FormerName)
+		return filepath.Join(base, brand.InstallName), filepath.Join(base, brand.FormerName)
 	case "windows":
 		if d := getenv("LOCALAPPDATA"); d != "" {
 			return filepath.Join(d, "Firmary", "Link"), filepath.Join(d, "Firmary", "Helper")

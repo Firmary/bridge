@@ -1,5 +1,7 @@
 #!/bin/bash
-# Build "Firmary Link.app" around a universal macOS binary, ad-hoc sign it and pack it into Firmary-Link.dmg.
+# Build "Firmary Bridge.app" around a universal macOS binary, ad-hoc sign it and pack it into Firmary-Bridge.dmg.
+# The executable and bundle id keep their Firmary Link names (firmary-link, app.firmary.link), so an install upgrades
+# in place.
 #
 #   packaging/macos/build-dmg.sh VERSION UNIVERSAL_BINARY OUTDIR
 #
@@ -21,7 +23,7 @@ mkdir -p "$outdir"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-app="$work/dmg/Firmary Link.app"
+app="$work/dmg/Firmary Bridge.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 sed "s/@VERSION@/$version/g" "$here/Info.plist.in" > "$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist"
@@ -37,11 +39,11 @@ codesign --verify --strict --verbose=2 "$app"
 
 ln -s /Applications "$work/dmg/Applications"
 
-dmg="$outdir/Firmary-Link.dmg"
+dmg="$outdir/Firmary-Bridge.dmg"
 rm -f "$dmg"
 # hdiutil occasionally fails with "Resource busy" on hosted runners; a short retry clears it.
 for attempt in 1 2 3; do
-  if hdiutil create -volname "Firmary Link" -srcfolder "$work/dmg" -fs HFS+ -format UDZO -ov "$dmg"; then
+  if hdiutil create -volname "Firmary Bridge" -srcfolder "$work/dmg" -fs HFS+ -format UDZO -ov "$dmg"; then
     break
   fi
   [ "$attempt" -lt 3 ] || exit 1
