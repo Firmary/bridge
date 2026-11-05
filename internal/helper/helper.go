@@ -49,10 +49,32 @@ type Helper struct {
 	Disabled func(adapter string) bool
 	// HelloExtra, if set, adds the reconnect reason and any rolled-back update to a hello.
 	HelloExtra func(*protocol.Hello)
+	// HelloBudget bounds how long Hello waits for the provider status checks; zero means DefaultHelloBudget.
+	HelloBudget time.Duration
+	// Changed, if set, is called when a status check that outlasted a hello finishes with a state other than the
+	// one that hello reported, so the Link sends a fresh hello.
+	Changed func()
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
 	held    bool
+
+	statusMu sync.Mutex
+	checks   map[string]*statusCheck          // the status check running for each profile directory
+	last     map[string]protocol.ProviderInfo // each profile directory's last status result
+}
+
+// DefaultHelloBudget is how long Hello waits for the provider status checks, well inside the 30 seconds the relay
+// allows between welcome and hello. A first check on a fresh profile can take nearly that long; one still running
+// when the budget ends is reported as its last known result (signed out if there is none), and Changed follows
+// when it finishes.
+const DefaultHelloBudget = 5 * time.Second
+
+// statusCheck is one provider status check; done closes when st and err are set.
+type statusCheck struct {
+	done chan struct{}
+	st   driver.ProviderStatus
+	err  error
 }
 
 // MaxConcurrentTurns is one in this slice: one turn at a time across the provider apps.
@@ -82,18 +104,92 @@ func (h *Helper) provider(adapter string) (Provider, bool) {
 	return Provider{}, false
 }
 
-// Hello reports versions and the state of every provider app.
-func (h *Helper) Hello(ctx context.Context, rec pairing.Record) protocol.Hello {
-	infos := []protocol.ProviderInfo{}
-	for _, p := range h.Providers {
-		st, err := p.Driver.Status(ctx, h.Profile(rec, p.Driver))
-		if err != nil {
-			h.Log.Log(logx.ProviderStatus, logx.Fields{Provider: p.Driver.ID(), Reason: "status_failed"})
+// statusCheck returns the status check running for d's profile, starting one if none is: a turn's check and a hello
+// share it, so the profile is never checked twice at once. The check runs to its end even if the caller stops
+// waiting (each driver bounds its own), and its result is kept for the next hello.
+func (h *Helper) statusCheck(ctx context.Context, prof driver.Profile, d driver.Driver) *statusCheck {
+	h.statusMu.Lock()
+	defer h.statusMu.Unlock()
+	if c := h.checks[prof.Dir]; c != nil {
+		return c
+	}
+	if h.checks == nil {
+		h.checks, h.last = map[string]*statusCheck{}, map[string]protocol.ProviderInfo{}
+	}
+	c := &statusCheck{done: make(chan struct{})}
+	h.checks[prof.Dir] = c
+	go func() {
+		c.st, c.err = d.Status(context.WithoutCancel(ctx), prof)
+		h.statusMu.Lock()
+		delete(h.checks, prof.Dir)
+		if c.err == nil {
+			h.last[prof.Dir] = providerInfo(d.ID(), c.st)
 		}
-		infos = append(infos, protocol.ProviderInfo{
-			ID: p.Driver.ID(), PinnedVersion: st.Installed, SignedIn: st.SignedIn, AccountType: st.AccountType,
-			OrgID: st.OrgID, AccountEmail: st.AccountEmail, Managed: st.Managed,
-		})
+		h.statusMu.Unlock()
+		close(c.done)
+	}()
+	return c
+}
+
+// wait waits for c until ctx ends, and reports whether c finished.
+func (c *statusCheck) wait(ctx context.Context) bool {
+	select {
+	case <-c.done:
+		return true
+	default:
+	}
+	select {
+	case <-c.done:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func providerInfo(id string, st driver.ProviderStatus) protocol.ProviderInfo {
+	return protocol.ProviderInfo{
+		ID: id, PinnedVersion: st.Installed, SignedIn: st.SignedIn, AccountType: st.AccountType,
+		OrgID: st.OrgID, AccountEmail: st.AccountEmail, Managed: st.Managed,
+	}
+}
+
+// Hello reports versions and the state of every provider app. The status checks run at once and Hello waits for
+// them for at most HelloBudget, so the relay gets its hello in time however slow a provider is.
+func (h *Helper) Hello(ctx context.Context, rec pairing.Record) protocol.Hello {
+	budget := h.HelloBudget
+	if budget <= 0 {
+		budget = DefaultHelloBudget
+	}
+	wctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	checks := make([]*statusCheck, len(h.Providers))
+	for i, p := range h.Providers {
+		checks[i] = h.statusCheck(ctx, h.Profile(rec, p.Driver), p.Driver)
+	}
+	infos := []protocol.ProviderInfo{}
+	for i, p := range h.Providers {
+		id, c := p.Driver.ID(), checks[i]
+		if c.wait(wctx) {
+			if c.err != nil {
+				h.Log.Log(logx.ProviderStatus, logx.Fields{Provider: id, Reason: "status_failed"})
+			}
+			infos = append(infos, providerInfo(id, c.st))
+			continue
+		}
+		h.Log.Log(logx.ProviderStatus, logx.Fields{Provider: id, Reason: "status_pending"})
+		h.statusMu.Lock()
+		reported, ok := h.last[h.Profile(rec, p.Driver).Dir]
+		h.statusMu.Unlock()
+		if !ok {
+			reported = protocol.ProviderInfo{ID: id}
+		}
+		infos = append(infos, reported)
+		go func() {
+			<-c.done
+			if c.err == nil && providerInfo(id, c.st) != reported && h.Changed != nil {
+				h.Changed()
+			}
+		}()
 	}
 	hello := protocol.Hello{
 		Type:          protocol.TypeHello,
@@ -219,7 +315,11 @@ func (h *Helper) serves(adapter string) bool {
 // a reason code. Call it only while holding the turn slot: Status may prepare the provider profile, which must not
 // happen under a running turn.
 func (h *Helper) checkProvider(ctx context.Context, rec pairing.Record, d driver.Driver, c ticket.Claims) (string, string) {
-	st, err := d.Status(ctx, h.Profile(rec, d))
+	check := h.statusCheck(ctx, h.Profile(rec, d), d)
+	if !check.wait(ctx) {
+		return protocol.ClassTransient, "status_failed"
+	}
+	st, err := check.st, check.err
 	switch {
 	case err != nil:
 		return protocol.ClassTransient, "status_failed"
