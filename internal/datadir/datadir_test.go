@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+// The folders keep their Firmary Link names after the rename to Firmary Bridge (brand.InstallName): the updater keeps
+// new versions in them, and the copy installed first must find them there.
 func TestPaths(t *testing.T) {
 	env := map[string]string{}
 	getenv := func(k string) string { return env[k] }
