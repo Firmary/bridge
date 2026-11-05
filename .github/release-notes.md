@@ -1,10 +1,13 @@
 **Beta and unsigned.** Firmary Bridge connects your own Claude or ChatGPT plan to Firmary. This build isn't signed by
 Apple or Microsoft yet, so your computer warns the first time you open it. A signed build is coming.
 
-**New in 0.3.2:** Firmary Link is now called **Firmary Bridge**. A computer that already has it updates by itself and
-stays paired, signed in and set to open at login. Installing this release over an older one does the same. On a Mac,
-if **Firmary Link** is still in Applications after you add **Firmary Bridge**, quit it, move it to the Bin and open
-Firmary Bridge; it takes over opening at login. On a server, the command is still `firmary-link`.
+**New in 0.3.3:** the server line works on any 64-bit Linux, with or without systemd: Docker containers, WSL and
+small VPS images too. Where systemd doesn't run, Firmary Bridge pairs and then keeps running in the background, starts
+again if it stops, and starts with the server when cron is there. After pairing, the line sends you back to Firmary
+for the next step instead of printing more commands.
+
+**0.3.2** renamed Firmary Link to **Firmary Bridge**. A computer that already has it updates by itself and stays
+paired, signed in and set to open at login. On a server, the command is still `firmary-link`.
 
 ## Install
 

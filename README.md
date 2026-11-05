@@ -19,7 +19,8 @@ what they show is Firmary Bridge.
 
 ## Status
 
-**Beta, unsigned.** Version 0.3.2 (the Firmary Bridge name) is the latest GitHub release; 0.3.1 made Enter pairing
+**Beta, unsigned.** Version 0.3.3 is the latest GitHub release: the server line works on any Linux, systemd or not,
+and keeps running after pairing. 0.3.2 brought the Firmary Bridge name; 0.3.1 made Enter pairing
 code… open the code box on Windows, 0.3.0 brought pairing v2 (Firmary shows the code, the person types it into the
 app) and 0.2.0 was the first Firmary Link release. It is not signed by Apple or Microsoft yet: macOS Gatekeeper and
 Windows SmartScreen warn the first time it opens. A signed build is coming. Installed copies update themselves from
@@ -50,9 +51,11 @@ releases, so `https://github.com/Firmary/bridge/releases/latest/download/<file>`
   ```
 
   It installs `firmary-link` for the current user (no sudo) after checking it against `checksums.txt`, makes it
-  start with the server and keep running after logout (`firmary-link service install`, a systemd user unit with
-  `loginctl enable-linger`), pairs it with that code (the server prints the code; the person confirms in Firmary)
-  and offers the Claude or ChatGPT sign-in, with a link that works on any browser, even a phone. Later:
+  start with the server and keep running after logout (`firmary-link service install`: a systemd user unit with
+  `loginctl enable-linger`, or a background process where systemd doesn't run), pairs it with that code (the
+  server prints the code; the person confirms in Firmary) and sends the person back to Firmary, which shows the
+  Claude or ChatGPT sign-in. It works on any 64-bit Linux, systemd or not: Docker, WSL and small VPS images too. If
+  the service can't be set up at all, it still pairs and then runs in that window. Later:
   `firmary-link status`, `firmary-link pair --code ABCD-EFGH`, `firmary-link unpair`,
   `firmary-link sign-in claude|chatgpt --device`, `firmary-link service status`.
 
@@ -140,8 +143,14 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
   start the Link goes back to the previous version. New provider pins move the pinned Claude Code and Codex the same
   way. Nobody sees anything unless something fails.
 - **Always on.** `firmary-link service install|uninstall|status`: a systemd unit (user-level when not root, with
-  restart and `MemoryMax`), a launchd agent on macOS, a logon task on Windows. `firmary-link open-at-login on|off`
-  for the desktop app.
+  restart and `MemoryMax`), a launchd agent on macOS, a logon task on Windows. On Linux without a running systemd
+  (a container, WSL, a small VPS image, or a user without a systemd session) it is a background process instead: a
+  small supervisor (`firmary-link supervise DIR`), detached from the terminal, runs the Link and starts it again
+  whenever it stops, and an `@reboot` crontab line starts it when the server restarts if cron runs there (if not,
+  `service install` says how to start it again). Its record, lock and output are `background.json`,
+  `background.lock` and `background.log` in the data directory. `scripts/test-install-no-systemd.sh` runs the
+  install line in a clean Ubuntu container against the fake relay. `firmary-link open-at-login on|off` for the
+  desktop app.
 - **The terminal screen.** The design's "Always-on server" transcript, plus who asked for the code. The copy
   is in [`internal/console`](internal/console); its package comment lists where and why it differs from the design,
   and tests pin it.

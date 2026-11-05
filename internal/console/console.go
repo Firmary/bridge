@@ -262,3 +262,14 @@ func (p *Printer) ServiceInstalled(server bool) {
 	}
 	p.ok("Starts when you log in")
 }
+
+// BackgroundStarted says the Link runs as a background process on a server without systemd (see service.Install).
+// atBoot says it starts again when the server restarts; otherwise start is the command that starts it again.
+func (p *Printer) BackgroundStarted(atBoot bool, start string) {
+	if atBoot {
+		p.ok("Runs in the background, keeps running after you log out and starts again when this server restarts")
+		return
+	}
+	p.ok("Runs in the background and keeps running after you log out")
+	fmt.Fprintf(p.W, "    If this server restarts, start it again with: %s\n", start)
+}
