@@ -31,28 +31,6 @@ func show(title, body string) {
 	_ = cmd.Run()
 }
 
-func canAskText() bool { return true }
-
-// askText shows the system InputBox through PowerShell, with the text on stdin and the answer on stdout. The box
-// returns "" when the person cancels.
-func askText(ctx context.Context, title, prompt, ok string) (string, bool) {
-	script := strings.Join([]string{
-		"Add-Type -AssemblyName Microsoft.VisualBasic",
-		"$r = [Microsoft.VisualBasic.Interaction]::InputBox(" + powershell(prompt) + ", " + powershell(title) + ", '')",
-		"[Console]::Out.Write($r)",
-	}, "\n")
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-")
-	cmd.Stdin = strings.NewReader(script)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
-	out, err := cmd.Output()
-	if err != nil || ctx.Err() != nil {
-		return "", false
-	}
-	return string(out), true
-}
-
 const (
 	mbYesNo         = 0x00000004
 	mbIconQuestion  = 0x00000020
