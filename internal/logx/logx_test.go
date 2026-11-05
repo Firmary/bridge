@@ -3,6 +3,7 @@ package logx
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -30,7 +31,8 @@ func TestFreeTextCannotReachTheLog(t *testing.T) {
 	if !strings.Contains(string(b), `"ticketId":"t_123"`) {
 		t.Fatalf("metadata missing:\n%s", b)
 	}
-	if st, _ := os.Stat(filepath.Join(dir, fileName)); st.Mode().Perm() != 0o600 {
+	// Windows has no mode bits (Go reports 0666); there the data directory is the user's own, in %LOCALAPPDATA%.
+	if st, _ := os.Stat(filepath.Join(dir, fileName)); runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
 		t.Fatalf("log mode %v, want 0600", st.Mode().Perm())
 	}
 }

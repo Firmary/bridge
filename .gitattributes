@@ -1,0 +1,7 @@
+# LF everywhere, Windows checkouts included: the system prompts are embedded byte for byte, and the test vectors are
+# hashed.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary
+*.syso binary

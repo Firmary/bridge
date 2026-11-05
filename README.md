@@ -11,8 +11,9 @@ that beta moves its data to the new name on first run and stays paired.
 
 ## Status
 
-**Beta, unsigned.** Version 0.3.0 (pairing v2: Firmary shows the code, the person types it into the Link) is the
-latest GitHub release; 0.2.0 was the first Firmary Link release. It is
+**Beta, unsigned.** Version 0.3.1 (on Windows, Enter pairing code… opens the code box; in 0.3.0 it stayed hidden) is
+the latest GitHub release; 0.3.0 brought pairing v2 (Firmary shows the code, the person types it into the Link) and
+0.2.0 was the first Firmary Link release. It is
 not signed by Apple or Microsoft yet: macOS Gatekeeper and Windows SmartScreen warn the first time it opens. A signed
 build is coming. Installed copies update themselves from the release's signed update manifest.
 
@@ -91,8 +92,9 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
 - **One outgoing connection.** A `wss://` WebSocket to the relay with reconnect and backoff, plus `hello`. Nothing
   listens on the computer and no ports are opened, the desktop app included.
 - **The desktop app.** With a display (macOS, Windows, a Linux desktop with a tray), `firmary-link` with no command
-  is a menu-bar or tray app with no terminal: Enter pairing code… (a native box: macOS dialog, Windows InputBox,
-  zenity or kdialog on Linux; it opens by itself when the Link isn't paired), the status (Not paired, Connecting to
+  is a menu-bar or tray app with no terminal: Enter pairing code… (a native box: macOS dialog, a Windows dialog
+  the Link draws with Windows' own controls, zenity or kdialog on Linux; it opens by itself when the Link isn't
+  paired), the status (Not paired, Connecting to
   Firmary as <person> · <firm> with the code and Cancel, Paired to <person> · <firm>, Offline), Unpair this
   computer, Sign in to Claude, Sign in to ChatGPT, Open at login, Check for updates, Quit. At login it starts
   quietly: the icon appears, it re-checks the pairing, and nothing opens unless the Link needs the person. Without a
@@ -203,8 +205,13 @@ The first `run` downloads the pinned Claude Code (about 290 MB). The real-Claude
 `FIRMARY_HELPER_REAL_CLAUDE` to an install directory. The real-Codex tests (about 120 MB) are opt-in the same way
 with `FIRMARY_HELPER_REAL_CODEX`.
 
-CI (`.github/workflows/ci.yml`) runs gofmt, vet, the race tests, and builds for macOS (with cgo, on a hosted
-Mac), Windows and Linux on GitHub-hosted runners.
+CI (`.github/workflows/ci.yml`) runs gofmt, vet, the race tests, the tests on Windows (the code box opens on the
+runner's desktop), and builds for macOS (with cgo, on a hosted Mac), Windows and Linux on GitHub-hosted runners.
+
+The Windows executable's manifest (Common Controls 6, per-monitor DPI) and icon come from
+`cmd/firmary-link/winres/winres.json`, compiled into the committed `rsrc_windows_*.syso` files that `go build`
+links in. After changing it or the icon, run in `cmd/firmary-link`:
+`go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64,arm64`.
 
 ## Licence
 
