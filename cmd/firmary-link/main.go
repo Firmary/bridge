@@ -147,12 +147,12 @@ func flags(name string, args []string, extra func(*flag.FlagSet)) (*common, []st
 	fs := flag.NewFlagSet(name, flag.ExitOnError)
 	fs.Usage = usage
 	fs.StringVar(&c.env, "env", "prod", "Firmary environment: prod, dev, or local (a fake relay on this computer)")
-	fs.StringVar(&c.dataDir, "data-dir", "", "where the Link keeps its key, pairing, logs, sign-ins and provider copies")
+	fs.StringVar(&c.dataDir, "data-dir", "", "where "+brand.Name+" keeps its key, pairing, logs, sign-ins and provider copies")
 	fs.StringVar(&c.ring, "ring", "stable", "update ring reported in hello")
 	fs.StringVar(&c.relayURL, "relay-url", "", "local only: the fake relay's loopback URL")
 	fs.StringVar(&c.keyFile, "ticket-key-file", "", "local only: file with the fake relay's base64 ticket public key")
 	fs.BoolVar(&c.headless, "headless", false, "never show the menu-bar or tray app")
-	fs.BoolVar(&c.noUpdate, "no-update", false, "don't update this Link or its provider apps")
+	fs.BoolVar(&c.noUpdate, "no-update", false, "don't update "+brand.Name+" or its provider apps")
 	if extra != nil {
 		extra(fs)
 	}

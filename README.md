@@ -5,17 +5,25 @@ and lets Firmary use **their own** Claude or ChatGPT plan. It keeps one outgoing
 only when that person asks for something in Firmary, runs their provider's app with their sign-in and streams the
 answer back.
 
-People see it as **Firmary Link**. The name lives in [`internal/brand/brand.go`](internal/brand/brand.go), and a
+People see it as **Firmary Bridge**. The name lives in [`internal/brand/brand.go`](internal/brand/brand.go), and a
 test fails if any other Go file spells it out. It was the "Firmary Helper" in the first beta; a computer paired with
-that beta moves its data to the new name on first run and stays paired.
+that beta moves its data to the new name on first run and stays paired. From 0.2.0 to 0.3.1 it was **Firmary Link**
+(the code still calls it "the Link"). That rename changed only what people see: the command (`firmary-link`), the
+macOS bundle id (`app.firmary.link`), the Linux package, the data folders and the Windows install folder, Run value,
+logon task and uninstall key keep the Firmary Link names (`brand.InstallName`). The updater keeps new versions in the
+data folder and the copy installed first reads it to find them, so these names can't move without stranding an
+install. Installing 0.3.2 or later over a Link upgrades it in place: on Windows the installer swaps the Start menu
+entry and the name in Apps; on a Mac, once the old "Firmary Link" app is deleted, Firmary Bridge points the login
+item at itself. Copies that only update themselves keep the old app and shortcut names on disk until reinstalled;
+what they show is Firmary Bridge.
 
 ## Status
 
-**Beta, unsigned.** Version 0.3.1 (on Windows, Enter pairing code… opens the code box; in 0.3.0 it stayed hidden) is
-the latest GitHub release; 0.3.0 brought pairing v2 (Firmary shows the code, the person types it into the Link) and
-0.2.0 was the first Firmary Link release. It is
-not signed by Apple or Microsoft yet: macOS Gatekeeper and Windows SmartScreen warn the first time it opens. A signed
-build is coming. Installed copies update themselves from the release's signed update manifest.
+**Beta, unsigned.** Version 0.3.2 (the Firmary Bridge name) is the latest GitHub release; 0.3.1 made Enter pairing
+code… open the code box on Windows, 0.3.0 brought pairing v2 (Firmary shows the code, the person types it into the
+app) and 0.2.0 was the first Firmary Link release. It is not signed by Apple or Microsoft yet: macOS Gatekeeper and
+Windows SmartScreen warn the first time it opens. A signed build is coming. Installed copies update themselves from
+the release's signed update manifest.
 
 ## Download
 
@@ -24,15 +32,16 @@ releases, so `https://github.com/Firmary/bridge/releases/latest/download/<file>`
 
 | File                                                                   | For                                         |
 | ---------------------------------------------------------------------- | ------------------------------------------- |
-| `Firmary-Link.dmg`                                                     | Mac (Apple silicon and Intel), macOS 13+    |
-| `Firmary-Link-Setup.exe`                                               | Windows 10 and 11 (x64 and Arm), per user   |
+| `Firmary-Bridge.dmg`                                                   | Mac (Apple silicon and Intel), macOS 13+    |
+| `Firmary-Bridge-Setup.exe`                                             | Windows 10 and 11 (x64 and Arm), per user   |
+| `Firmary-Link.dmg`, `Firmary-Link-Setup.exe`                           | The same two, under their 0.3.1 names       |
 | `firmary-link_<version>_amd64.deb`, `firmary-link_<version>_arm64.deb` | Linux desktop (Debian, Ubuntu)              |
 | `install.sh`, `firmary-link-linux-x64.tar.gz`, `-linux-arm64.tar.gz`   | Linux server or VPS                         |
 | `manifest.json`, `manifest.json.sig`, `checksums.txt`                  | The signed update manifest and the SHA-256s |
 
-- **Mac**: open the dmg, drag **Firmary Link** to **Applications** and open it. The first time macOS blocks it: open
+- **Mac**: open the dmg, drag **Firmary Bridge** to **Applications** and open it. The first time macOS blocks it: open
   **System Settings › Privacy & Security** and click **Open Anyway**.
-- **Windows**: run `Firmary-Link-Setup.exe`; at "Windows protected your PC" click **More info › Run anyway**.
+- **Windows**: run `Firmary-Bridge-Setup.exe`; at "Windows protected your PC" click **More info › Run anyway**.
 - **Linux server or VPS** (no browser needed on the server): Firmary's Settings › Connections › Add a server shows
   one line with the pairing code in it:
 
@@ -54,8 +63,8 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
 
 - Design: design studio `5877e3252806` ("local bridge" walkthrough, from chat #1825). The screens this repo serves
   are "Always-on server" (the only terminal people ever see), "Firmary Link on this computer" (restart, what the
-  firm sees, permissions; the design still calls it "Helper", the beta's old name) and "On the computer"
-  (installers on macOS, Windows and Ubuntu).
+  firm sees, permissions; the design still calls it "Helper", the beta's old name, and the app is now Firmary
+  Bridge) and "On the computer" (installers on macOS, Windows and Ubuntu).
 - Plan: `reviews/personal-ai-relay-build-plan-2026-11-01.md` (decisions G1–G11, slices S0–S18). This repo is the
   plan's Helper repo ("H").
 - History: the S2 skeleton was built and security-reviewed in a local `firmary-helper` repo
@@ -165,7 +174,7 @@ The logger has no free-text field, and tests enforce this.
 | `cmd/firmary-link`           | The Link: desktop app, terminal and commands                 |
 | `cmd/link-release`           | Release tool: update keys, writes and signs the manifest     |
 | `cmd/fake-relay`             | A local fake relay for development (loopback only)           |
-| `internal/brand`             | The product name (one constant)                              |
+| `internal/brand`             | The product name, and the install names that stay put        |
 | `internal/console`           | What the Link prints to the person, in the design's words    |
 | `internal/agent`             | The running Link: relay, turns, updates, state for the app   |
 | `internal/tray`              | The menu-bar and tray app                                    |
@@ -208,9 +217,10 @@ with `FIRMARY_HELPER_REAL_CODEX`.
 CI (`.github/workflows/ci.yml`) runs gofmt, vet, the race tests, the tests on Windows (the code box opens on the
 runner's desktop), and builds for macOS (with cgo, on a hosted Mac), Windows and Linux on GitHub-hosted runners.
 
-The Windows executable's manifest (Common Controls 6, per-monitor DPI) and icon come from
+The Windows executable's manifest (Common Controls 6, per-monitor DPI), version details and icon come from
 `cmd/firmary-link/winres/winres.json`, compiled into the committed `rsrc_windows_*.syso` files that `go build`
-links in. After changing it or the icon, run in `cmd/firmary-link`:
+links in. Its version details (Firmary Bridge, what Task Manager shows) carry 0.0.0.0 in the committed files; the
+release build regenerates them with the release version. After changing it or the icon, run in `cmd/firmary-link`:
 `go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64,arm64`.
 
 ## Licence

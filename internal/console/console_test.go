@@ -19,7 +19,7 @@ func TestServerTranscript(t *testing.T) {
 	p.Paired("Maria Okafor", "Harlow & Pike CPA")
 	p.SignedIn("Claude", "team", "maria@harlowpike.example")
 
-	want := "Firmary Link 1.4.2 for Linux (x86_64)\n" +
+	want := "Firmary Bridge 1.4.2 for Linux (x86_64)\n" +
 		"ok  Claude Code is ready\n" +
 		"ok  Reached Firmary (outgoing only, nothing to open)\n" +
 		"ok  Connecting to Firmary as Maria Okafor · Harlow & Pike CPA\n" +
@@ -28,7 +28,7 @@ func TestServerTranscript(t *testing.T) {
 		"Waiting for you to confirm…\n" +
 		"ok  Paired to Maria Okafor · Harlow & Pike CPA\n" +
 		"This computer now runs only requests Firmary signs for Maria Okafor.\n" +
-		"Not you? Stop the Firmary Link now.\n" +
+		"Not you? Stop the Firmary Bridge now.\n" +
 		"ok  Signed in to Claude as maria@harlowpike.example (Team plan)\n"
 	if b.String() != want {
 		t.Fatalf("transcript:\n%s\nwant:\n%s", b.String(), want)
@@ -104,7 +104,7 @@ func TestConfirmPairing(t *testing.T) {
 		}
 	}
 	want := "Someone paired this computer in Firmary. It pairs only after a yes typed on this computer, and the names " +
-		"are shown only in a terminal.\nTo answer, stop the Firmary Link and start it in a terminal.\n"
+		"are shown only in a terminal.\nTo answer, stop the Firmary Bridge and start it in a terminal.\n"
 	if b.String() != want {
 		t.Fatalf("off a terminal printed:\n%s\nwant:\n%s", b.String(), want)
 	}
@@ -112,8 +112,8 @@ func TestConfirmPairing(t *testing.T) {
 
 func TestBannerNamesEachDesktop(t *testing.T) {
 	for _, c := range []struct{ goos, goarch, want string }{
-		{"darwin", "arm64", "Firmary Link 1.0.0 for macOS (arm64)\n"},
-		{"windows", "amd64", "Firmary Link 1.0.0 for Windows (x86_64)\n"},
+		{"darwin", "arm64", "Firmary Bridge 1.0.0 for macOS (arm64)\n"},
+		{"windows", "amd64", "Firmary Bridge 1.0.0 for Windows (x86_64)\n"},
 	} {
 		var b bytes.Buffer
 		(&Printer{W: &b}).Banner("1.0.0", c.goos, c.goarch)

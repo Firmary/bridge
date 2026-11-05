@@ -2,9 +2,12 @@ package service
 
 import (
 	"encoding/xml"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -84,4 +87,53 @@ func queryLaunchd(c Config) Status {
 	out, err := exec.Command("launchctl", "print", launchdTarget()).Output()
 	st.Running = err == nil && strings.Contains(string(out), "state = running")
 	return st
+}
+
+// Repoint points the macOS launchd agent (the login item or the always-on agent) at c.Exe when the executable it
+// starts is gone. A Mac that had the app under its former name (brand.InstallName) and replaced it with the app under
+// brand.Name keeps opening at login once the old copy is deleted. An agent whose executable is still there is left
+// alone.
+func Repoint(c Config) error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	return repointLaunchd(launchdPlist(c.Home), c.Exe)
+}
+
+func repointLaunchd(path, exe string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	plist := string(b)
+	old, ok := launchdExe(plist)
+	if !ok || old == exe {
+		return nil
+	}
+	if _, err := os.Stat(old); !errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	plist = strings.Replace(plist, "<string>"+xmlText(old)+"</string>", "<string>"+xmlText(exe)+"</string>", 1)
+	return os.WriteFile(path, []byte(plist), 0o644)
+}
+
+// launchdExe reads the executable, the first ProgramArguments entry, from a plist LaunchdPlist wrote.
+func launchdExe(plist string) (string, bool) {
+	_, rest, ok := strings.Cut(plist, "<key>ProgramArguments</key>")
+	if !ok {
+		return "", false
+	}
+	_, rest, ok = strings.Cut(rest, "<string>")
+	if !ok {
+		return "", false
+	}
+	escaped, _, ok := strings.Cut(rest, "</string>")
+	if !ok {
+		return "", false
+	}
+	var exe string
+	if err := xml.Unmarshal([]byte("<s>"+escaped+"</s>"), &exe); err != nil {
+		return "", false
+	}
+	return exe, true
 }

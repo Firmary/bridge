@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install Firmary Link on a Linux server or a Mac, for the current user, without sudo. Firmary (Settings ›
+# Install Firmary Bridge on a Linux server or a Mac, for the current user, without sudo. Firmary (Settings ›
 # Connections › Add a server) gives the line, with the pairing code it shows:
 #
 #   curl -fsSL https://github.com/Firmary/bridge/releases/latest/download/install.sh | sh -s -- --code ABCD-EFGH
@@ -48,11 +48,11 @@ main() {
       case "$arch" in
         x86_64 | amd64) asset=firmary-link-linux-x64.tar.gz ;;
         aarch64 | arm64) asset=firmary-link-linux-arm64.tar.gz ;;
-        *) fail "Firmary Link runs on 64-bit Intel/AMD (x86_64) or Arm (aarch64) Linux; this machine is $arch" ;;
+        *) fail "Firmary Bridge runs on 64-bit Intel/AMD (x86_64) or Arm (aarch64) Linux; this machine is $arch" ;;
       esac
       ;;
     Darwin) asset=firmary-link-darwin-universal ;;
-    *) fail "this installer is for Linux and macOS. On Windows, run Firmary-Link-Setup.exe from https://github.com/Firmary/bridge/releases/latest" ;;
+    *) fail "this installer is for Linux and macOS. On Windows, run Firmary-Bridge-Setup.exe from https://github.com/Firmary/bridge/releases/latest" ;;
   esac
 
   command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 ||

@@ -1,8 +1,8 @@
-; Firmary Link installer for Windows (per user, no admin).
+; Firmary Bridge installer for Windows (per user, no admin).
 ;
 ; Built on Linux with NSIS 3:
 ;   makensis -DVERSION=0.2.0 -DX64_EXE="$PWD/dist/firmary-link-windows-x64.exe" \
-;     -DARM64_EXE="$PWD/dist/firmary-link-windows-arm64.exe" -DOUTFILE="$PWD/dist/Firmary-Link-Setup.exe" \
+;     -DARM64_EXE="$PWD/dist/firmary-link-windows-arm64.exe" -DOUTFILE="$PWD/dist/Firmary-Bridge-Setup.exe" \
 ;     packaging/windows/installer.nsi
 ;
 ; It carries both executables and installs the one that matches the machine's native architecture.
@@ -20,20 +20,24 @@ SetCompressor /SOLID lzma
   !error "pass -DARM64_EXE=path/to/firmary-link-windows-arm64.exe"
 !endif
 !ifndef OUTFILE
-  !define OUTFILE "Firmary-Link-Setup.exe"
+  !define OUTFILE "Firmary-Bridge-Setup.exe"
 !endif
 
-!define APP_NAME "Firmary Link"
+!define APP_NAME "Firmary Bridge"
+; The name the Firmary Link releases (0.2.0 to 0.3.1) installed under. The install folder, Run value, logon task and
+; uninstall key keep it (as brand.InstallName does in the app), so installing over one of them upgrades it in place.
+!define INSTALL_NAME "Firmary Link"
+!define FORMER_SHORTCUT "$SMPROGRAMS\${INSTALL_NAME}.lnk"
 !define APP_EXE "firmary-link.exe"
 !define PUBLISHER "Firmary"
 ; makensis runs from this script's folder, so this path is relative to it; pass the exe paths as absolute paths.
 !define ICON "../../assets/windows/firmary-link.ico"
 ; The app's own Open-at-login toggle reads and writes this exact value name.
 !define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
-!define RUN_VALUE "Firmary Link"
+!define RUN_VALUE "${INSTALL_NAME}"
 !define STARTUP_APPROVED_KEY "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\FirmaryLink"
-!define TASK_NAME "Firmary Link"
+!define TASK_NAME "${INSTALL_NAME}"
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
@@ -42,7 +46,7 @@ SetCompressor /SOLID lzma
 Name "${APP_NAME}"
 OutFile "${OUTFILE}"
 RequestExecutionLevel user
-InstallDir "$LOCALAPPDATA\Programs\${APP_NAME}"
+InstallDir "$LOCALAPPDATA\Programs\${INSTALL_NAME}"
 BrandingText "${APP_NAME} ${VERSION}"
 ShowInstDetails nevershow
 ShowUninstDetails nevershow
@@ -95,6 +99,7 @@ Section "Install"
   File "/oname=firmary-link.ico" "${ICON}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
+  Delete "${FORMER_SHORTCUT}"
   CreateShortCut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\firmary-link.ico" 0
 
   ; Open at login is on by default; the app's own toggle turns it off.
@@ -122,6 +127,7 @@ Section "Uninstall"
   DeleteRegValue HKCU "${RUN_KEY}" "${RUN_VALUE}"
   DeleteRegValue HKCU "${STARTUP_APPROVED_KEY}" "${RUN_VALUE}"
   Delete "$SMPROGRAMS\${APP_NAME}.lnk"
+  Delete "${FORMER_SHORTCUT}"
 
   ; The install folder is the app's own (there is no folder choice), so anything the updater left there goes too.
   RMDir /r "$INSTDIR"
