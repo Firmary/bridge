@@ -448,7 +448,8 @@ func (d *slowDriver) Status(ctx context.Context, p driver.Profile) (driver.Provi
 
 // TestHelloDoesNotWaitForSlowProvider: a provider status check that outlasts the hello budget doesn't hold hello
 // back (the relay drops a connection whose hello is 30 seconds late). Hello reports the provider signed out until
-// the check finishes, then a refresh hello reports what it found; a turn arriving meanwhile shares the running check.
+// the check finishes, then a refresh hello reports what it found. A turn arriving meanwhile waits for that check and
+// then runs its own: a check that started before the turn (perhaps before a sign-in) never decides it.
 func TestHelloDoesNotWaitForSlowProvider(t *testing.T) {
 	sd := &slowDriver{gate: make(chan struct{})}
 	start := time.Now()
@@ -464,7 +465,7 @@ func TestHelloDoesNotWaitForSlowProvider(t *testing.T) {
 		t.Fatalf("pairing and hello took %v", d)
 	}
 
-	// A turn now joins the check that is still running instead of starting a second one.
+	// A turn now queues behind the check that is still running instead of running a second one beside it.
 	c := g.r.Claims(g.dev, pinVersion, "", testkit.PromptCanary)
 	if err := g.r.SendTurn(c, "", testkit.PromptCanary); err != nil {
 		t.Fatal(err)
@@ -479,15 +480,15 @@ func TestHelloDoesNotWaitForSlowProvider(t *testing.T) {
 	if p := refreshed.Providers[0]; !p.SignedIn || p.AccountType != "team" || p.PinnedVersion != pinVersion {
 		t.Fatalf("refresh hello %+v", p)
 	}
-	// One check for the first hello and the turn together, a second for the refresh, and nothing after it: the
-	// refresh found what the first check had, so no further hello is due.
+	// One check each for the first hello, the turn and the refresh, and nothing after it: the refresh found what the
+	// first check had, so no further hello is due.
 	select {
 	case h := <-g.r.Hellos:
 		t.Fatalf("unexpected hello %+v", h)
 	case <-time.After(200 * time.Millisecond):
 	}
-	if n := sd.statuses.Load(); n != 2 {
-		t.Fatalf("%d status checks, want 2", n)
+	if n := sd.statuses.Load(); n != 3 {
+		t.Fatalf("%d status checks, want 3", n)
 	}
 	g.stop()
 	written := testkit.ReadDir(t, filepath.Join(g.data, "logs"))
