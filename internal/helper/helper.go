@@ -70,11 +70,13 @@ type Helper struct {
 // when it finishes.
 const DefaultHelloBudget = 5 * time.Second
 
-// statusCheck is one provider status check; done closes when st and err are set.
+// statusCheck is one provider status check; done closes when st and err are set. next is the check queued to run
+// when this one ends.
 type statusCheck struct {
 	done chan struct{}
 	st   driver.ProviderStatus
 	err  error
+	next *statusCheck
 }
 
 // MaxConcurrentTurns is one in this slice: one turn at a time across the provider apps.
@@ -104,31 +106,48 @@ func (h *Helper) provider(adapter string) (Provider, bool) {
 	return Provider{}, false
 }
 
-// statusCheck returns the status check running for d's profile, starting one if none is: a turn's check and a hello
-// share it, so the profile is never checked twice at once. The check runs to its end even if the caller stops
-// waiting (each driver bounds its own), and its result is kept for the next hello.
+// statusCheck returns a status check of d's profile that starts after this call, so its result is never older than
+// the caller's question (a sign-in or sign-out may have just changed the account). One check runs per profile at a
+// time: if one is running, the caller gets the check queued behind it, shared with everyone else who asked
+// meanwhile. A check runs to its end even if its callers stop waiting (each driver bounds its own), and its result
+// is kept for the next hello.
 func (h *Helper) statusCheck(ctx context.Context, prof driver.Profile, d driver.Driver) *statusCheck {
 	h.statusMu.Lock()
 	defer h.statusMu.Unlock()
-	if c := h.checks[prof.Dir]; c != nil {
-		return c
-	}
 	if h.checks == nil {
 		h.checks, h.last = map[string]*statusCheck{}, map[string]protocol.ProviderInfo{}
 	}
-	c := &statusCheck{done: make(chan struct{})}
-	h.checks[prof.Dir] = c
-	go func() {
-		c.st, c.err = d.Status(context.WithoutCancel(ctx), prof)
+	running := h.checks[prof.Dir]
+	if running == nil {
+		c := &statusCheck{done: make(chan struct{})}
+		h.checks[prof.Dir] = c
+		go h.runStatus(context.WithoutCancel(ctx), prof, d, c)
+		return c
+	}
+	if running.next == nil {
+		running.next = &statusCheck{done: make(chan struct{})}
+	}
+	return running.next
+}
+
+// runStatus runs c, then the check queued behind it.
+func (h *Helper) runStatus(ctx context.Context, prof driver.Profile, d driver.Driver, c *statusCheck) {
+	for c != nil {
+		c.st, c.err = d.Status(ctx, prof)
 		h.statusMu.Lock()
-		delete(h.checks, prof.Dir)
 		if c.err == nil {
 			h.last[prof.Dir] = providerInfo(d.ID(), c.st)
 		}
+		next := c.next
+		if next != nil {
+			h.checks[prof.Dir] = next
+		} else {
+			delete(h.checks, prof.Dir)
+		}
 		h.statusMu.Unlock()
 		close(c.done)
-	}()
-	return c
+		c = next
+	}
 }
 
 // wait waits for c until ctx ends, and reports whether c finished.
