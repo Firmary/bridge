@@ -8,8 +8,8 @@ Firmary Bridge; it takes over opening at login. On a server, the command is stil
 
 ## Install
 
-- **Mac:** open `Firmary-Bridge.dmg` and drag **Firmary Bridge** to **Applications**, then open it. The first time, macOS
-  blocks it: open **System Settings › Privacy & Security**, scroll down and click **Open Anyway**.
+- **Mac:** open `Firmary-Bridge.dmg` and drag **Firmary Bridge** to **Applications**, then open it. The first time,
+  macOS blocks it: open **System Settings › Privacy & Security**, scroll down and click **Open Anyway**.
 - **Windows:** run `Firmary-Bridge-Setup.exe`. If SmartScreen says "Windows protected your PC", click **More info ›
   Run anyway**.
 - **Linux desktop:** install the `.deb` for your computer (`amd64` for most, `arm64` for Arm).
