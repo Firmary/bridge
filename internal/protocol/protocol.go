@@ -46,6 +46,7 @@ const (
 	TypeRevoke         = "revoke"
 	TypeError          = "error"
 	TypeSignin         = "signin"
+	TypeSigninCode     = "signin_code"
 	// Helper -> relay.
 	TypeAuth           = "auth"
 	TypePairingReveal  = "pairing_reveal"
@@ -54,6 +55,7 @@ const (
 	TypeHello          = "hello"
 	TypeEvent          = "event"
 	TypeSigninStep     = "signin_step"
+	TypeSigninResult   = "signin_result"
 )
 
 // Device kinds (pairing_reveal device.kind and hello kind): the app on a person's computer, or the always-on
@@ -254,13 +256,33 @@ type Signin struct {
 }
 
 // SigninStep is the provider's own sign-in link and, for a device link, its one-time code, which Firmary shows the
-// person. Never logged.
+// person. Never logged. PasteCode says the provider's page may end on a code for the person to paste into Firmary,
+// which comes back as SigninCode (Claude Code: its link always ends on that code; on a desktop it also opened its own
+// browser sign-in, which needs no code). Kind "paste_code" (a server) has no browser here at all.
 type SigninStep struct {
+	Type      string `json:"type"`
+	Provider  string `json:"provider"`
+	Kind      string `json:"kind"` // "browser", "device_link" or "paste_code"
+	URL       string `json:"url,omitempty"`
+	UserCode  string `json:"userCode,omitempty"`
+	PasteCode bool   `json:"pasteCode,omitempty"`
+}
+
+// SigninCode is the code the provider's page showed the person, pasted into Firmary, for the sign-in that is running.
+// Never logged.
+type SigninCode struct {
 	Type     string `json:"type"`
 	Provider string `json:"provider"`
-	Kind     string `json:"kind"` // "browser" or "device_link"
-	URL      string `json:"url,omitempty"`
-	UserCode string `json:"userCode,omitempty"`
+	Code     string `json:"code"`
+}
+
+// SigninResult says how the provider sign-in ended, sent when it ends. A pasted code that isn't one (Pattern
+// "signin_code_invalid") is answered at once while the sign-in keeps waiting for a good one.
+type SigninResult struct {
+	Type     string `json:"type"`
+	Provider string `json:"provider"`
+	OK       bool   `json:"ok"`
+	Pattern  string `json:"pattern,omitempty"`
 }
 
 // EventMsg carries one stream event for a turn.

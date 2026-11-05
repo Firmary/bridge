@@ -80,6 +80,14 @@
       }
     },
     {
+      "name": "code pasted for the running sign-in",
+      "document": {
+        "type": "signin_code",
+        "provider": "claude-code",
+        "code": "aB3dE5fG7hJ9kL1m_nP-q#c3RhdGUtMTIz"
+      }
+    },
+    {
       "name": "sign out",
       "document": {
         "type": "signout",
@@ -174,6 +182,15 @@
       "document": {
         "type": "signin",
         "provider": "gemini-cli"
+      }
+    },
+    {
+      "name": "pasted code without its state",
+      "path": "/code",
+      "document": {
+        "type": "signin_code",
+        "provider": "claude-code",
+        "code": "aB3dE5fG7hJ9kL1m"
       }
     },
     {

@@ -136,9 +136,12 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
   answer.
 - **Sign-in from Firmary.** On the relay's `signin`, the Link runs that provider's sign-in in the paired person's
   profile and sends `signin_step` with the link (and code) for Firmary to show: the browser on a desktop, the
-  device link on a server (Codex). Claude Code has no device link; its server sign-in is
-  `firmary-link sign-in claude --device` on the server, until the relay can carry back the code Anthropic's page
-  shows.
+  device link on a server (Codex). Claude Code's link ends on a code Anthropic's page shows (it prints no other
+  link), so its step has `pasteCode` (kind `paste_code` on a server): the person pastes the code into Firmary, the
+  relay's `signin_code` brings it here, the Link writes it to Claude Code, and `signin_result` says at once whether
+  it signed in (`signin_code_refused`, `signin_code_invalid`, `signin_not_running` otherwise). On a desktop, signing
+  in on the page Claude Code opened there needs no code. On Windows, Claude Code opens that page with
+  `rundll32 url,OpenURL`, found on the `PATH` the Link passes through.
 - **Silent self-update.** At start and every few hours, between turns only, the Link reads the signed
   `manifest.json` (firmary-os `UpdateManifest`, detached Ed25519 signature, checked against two pinned update keys,
   current and next). A tampered, foreign-key, replayed or expired manifest is refused. A newer Link in this device's

@@ -297,6 +297,32 @@
       "properties": {
         "type": {
           "type": "string",
+          "const": "signin_code"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "claude-code",
+            "codex"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._~-]{8,512}#[A-Za-z0-9._~-]{8,512}$"
+        }
+      },
+      "required": [
+        "type",
+        "provider",
+        "code"
+      ],
+      "additionalProperties": {}
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
           "const": "signout"
         },
         "provider": {
