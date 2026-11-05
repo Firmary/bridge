@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate every Firmary Link icon from the Firmary mark.
+"""Generate every Firmary Bridge icon from the Firmary mark.
 
 The mark is a 512x512 rounded square (rx 96, #0f172a) with a white "F":
   M165 387V125H347V171.4H219V235.8H338.4V280.9H219V387Z

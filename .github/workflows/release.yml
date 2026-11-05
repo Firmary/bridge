@@ -1,6 +1,6 @@
 name: release
 
-# A vX.Y.Z tag (plain semver, 0.2.0 or later) builds Firmary Link for macOS, Windows and Linux and publishes it as the
+# A vX.Y.Z tag (plain semver, 0.2.0 or later) builds Firmary Bridge for macOS, Windows and Linux and publishes it as the
 # latest GitHub release: a beta, unsigned (ad-hoc signed on macOS; no Developer ID, notarization or Authenticode yet).
 # Installed copies update themselves from the release's signed manifest.json. The weekly schedule and a manual run
 # only re-sign the latest release's manifest with a fresh expiry, so copies keep trusting it between releases.
@@ -86,14 +86,14 @@ jobs:
           # Ad-hoc only: this is the raw binary the updater installs.
           codesign --force --sign - --identifier app.firmary.link dist/firmary-link-darwin-universal
           codesign --verify --verbose=2 dist/firmary-link-darwin-universal
-      - name: Build Firmary Link.app and the dmg
+      - name: Build Firmary Bridge.app and the dmg
         run: packaging/macos/build-dmg.sh "$VERSION" dist/firmary-link-darwin-universal dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos
           path: |
             dist/firmary-link-darwin-universal
-            dist/Firmary-Link.dmg
+            dist/Firmary-Bridge.dmg
           if-no-files-found: error
           retention-days: 7
 
@@ -116,6 +116,11 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends nsis
+      - name: Put the version in the Windows executable's details
+        working-directory: cmd/firmary-link
+        run: |
+          go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64,arm64 \
+            --file-version "$VERSION" --product-version "$VERSION"
       - name: Build Linux and Windows
         run: |
           set -euo pipefail
@@ -135,7 +140,7 @@ jobs:
         run: |
           makensis -V2 -WX -DVERSION="$VERSION" \
             -DX64_EXE="$PWD/dist/firmary-link-windows-x64.exe" -DARM64_EXE="$PWD/dist/firmary-link-windows-arm64.exe" \
-            -DOUTFILE="$PWD/dist/Firmary-Link-Setup.exe" packaging/windows/installer.nsi
+            -DOUTFILE="$PWD/dist/Firmary-Bridge-Setup.exe" packaging/windows/installer.nsi
       - run: cp packaging/install.sh dist/install.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -170,13 +175,16 @@ jobs:
       - name: Check every asset is there
         run: |
           set -euo pipefail
-          for f in Firmary-Link.dmg Firmary-Link-Setup.exe install.sh \
+          for f in Firmary-Bridge.dmg Firmary-Bridge-Setup.exe install.sh \
             "firmary-link_${VERSION}_amd64.deb" "firmary-link_${VERSION}_arm64.deb" \
             firmary-link-linux-x64.tar.gz firmary-link-linux-arm64.tar.gz \
             firmary-link-darwin-universal firmary-link-linux-x64 firmary-link-linux-arm64 \
             firmary-link-windows-x64.exe firmary-link-windows-arm64.exe; do
             [ -f "dist/$f" ] || { echo "::error::missing dist/$f"; exit 1; }
           done
+          # The same files under their Firmary Link names (0.3.1 and before), so links to latest/download keep working.
+          cp dist/Firmary-Bridge.dmg dist/Firmary-Link.dmg
+          cp dist/Firmary-Bridge-Setup.exe dist/Firmary-Link-Setup.exe
           ls -la dist
       - name: Sign the update manifest
         env:
@@ -200,7 +208,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release create "$TAG" dist/* --verify-tag --latest \
-            --title "Firmary Link $VERSION (beta, unsigned)" --notes-file .github/release-notes.md
+            --title "Firmary Bridge $VERSION (beta, unsigned)" --notes-file .github/release-notes.md
 
   refresh-manifest:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

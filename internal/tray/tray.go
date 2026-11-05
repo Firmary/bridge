@@ -133,6 +133,7 @@ func (a *App) ready() {
 		m.provAction[p.ID] = systray.AddMenuItem("Sign in to "+p.Account, "")
 	}
 	systray.AddSeparator()
+	_ = service.Repoint(a.Login)
 	m.login = systray.AddMenuItemCheckbox("Open at login", "", service.OpenAtLogin(a.Login))
 	m.update = systray.AddMenuItem("Check for updates", "")
 	m.quit = systray.AddMenuItem("Quit "+brand.Name, "")
