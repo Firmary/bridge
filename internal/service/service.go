@@ -158,6 +158,7 @@ func installLinux(c Config) (Result, error) {
 			return res, nil
 		}
 		// Most often a user without a systemd user session (su instead of SSH). Leave no unit behind.
+		_ = run(systemctl(c, "disable", "--now", UnitName))
 		_ = os.Remove(unitPath(c))
 	}
 	return installBackground(c)

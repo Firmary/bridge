@@ -106,7 +106,9 @@ func installBackground(c Config) (Result, error) {
 	if err := startBackground(c); err != nil {
 		return Result{}, err
 	}
-	return Result{Path: path, Lingering: true, Background: true, AtBoot: cronRunning() && addCron(c.Exe, dir) == nil}, nil
+	// The @reboot line goes in even when cron isn't running now (it may start at boot); only a running cron is promised.
+	added := addCron(c.Exe, dir) == nil
+	return Result{Path: path, Lingering: true, Background: true, AtBoot: added && cronRunning()}, nil
 }
 
 func uninstallBackground(c Config) error {
@@ -318,8 +320,16 @@ func setCron(line string) error {
 	if _, err := exec.LookPath("crontab"); err != nil {
 		return err
 	}
-	// `crontab -l` fails when the user has no crontab yet: that is an empty one.
-	current, _ := exec.Command("crontab", "-l").Output()
+	// `crontab -l` fails when the user has no crontab yet: that is an empty one. Any other failure leaves the crontab
+	// alone, so a read that broke off never replaces the person's own lines.
+	current, err := exec.Command("crontab", "-l").Output()
+	if err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || !strings.Contains(string(exit.Stderr), "no crontab") {
+			return fmt.Errorf("couldn't read the crontab: %w", err)
+		}
+		current = nil
+	}
 	next := withCron(string(current), line)
 	if next == string(current) {
 		return nil

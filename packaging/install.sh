@@ -116,9 +116,13 @@ main() {
     service=none
   else
     # shellcheck disable=SC2086 # link_args is checked above: words without spaces or globs
-    if "$bin" service install $link_args; then
+    if out=$("$bin" service install $link_args 2>&1); then
+      say "$out"
       service=1
+      # A systemd user unit whose linger couldn't be turned on stops when the person logs out (the CLI says so).
+      case "$out" in *enable-linger*) service=session ;; esac
     else
+      say "$out"
       say "    It couldn't be set up to start with this machine, so after pairing it runs in this window."
     fi
   fi
@@ -153,6 +157,10 @@ main() {
   case "$service" in
     1)
       say "You can close this window; it keeps running."
+      later
+      ;;
+    session)
+      say "It keeps running while you stay logged in (see above to keep it running after you log out)."
       later
       ;;
     none)

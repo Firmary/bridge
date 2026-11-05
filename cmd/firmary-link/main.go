@@ -671,8 +671,8 @@ func serviceCmd(args []string) error {
 		out := &console.Printer{W: os.Stdout}
 		if res.Background {
 			start := append([]string{commandName(cfg.Exe), "service", "install"}, cfg.Args[1:]...) // after "run"
-			if c.dataDirSet {
-				start = append(start, "--data-dir", c.dataDir)
+			if c.dataDirSet || os.Getenv("XDG_DATA_HOME") != "" {
+				start = append(start, "--data-dir", c.dataDir) // the same directory, whatever the shell later sets
 			}
 			out.BackgroundStarted(res.AtBoot, strings.Join(start, " "))
 		} else {
