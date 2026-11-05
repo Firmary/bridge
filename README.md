@@ -130,7 +130,10 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
   desktop session; also in `pairing_reveal.device`) and both provider apps: `signedIn`, `accountType` (Claude: the
   Claude plan; Codex: the ChatGPT plan type), `orgId` (the Claude organisation or the ChatGPT workspace),
   `accountEmail` (from `claude auth status` or the ChatGPT id token; for the person's own Connections page, never
-  logged, omitted when unknown) and `pinnedVersion`, and is sent again after a sign-in or sign-out.
+  logged, omitted when unknown) and `pinnedVersion`, and is sent again after a sign-in or sign-out. The status
+  checks run side by side and hello waits for them at most 5 seconds (the relay allows 30): a check still running
+  is reported as its last result (signed out if none), and a fresh hello follows once it finishes with a different
+  answer.
 - **Sign-in from Firmary.** On the relay's `signin`, the Link runs that provider's sign-in in the paired person's
   profile and sends `signin_step` with the link (and code) for Firmary to show: the browser on a desktop, the
   device link on a server (Codex). Claude Code has no device link; its server sign-in is

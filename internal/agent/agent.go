@@ -159,6 +159,8 @@ func Open(o Options) (*Agent, error) {
 		Providers: []helper.Provider{{Adapter: helper.AdapterClaudeCode, Driver: a.Claude}, {Adapter: helper.AdapterCodex, Driver: a.Codex}},
 		Verifier:  ticket.NewVerifier(keys, nil), DataDir: a.EnvDir, Version: o.Version, Ring: o.Ring, Log: log,
 		Disabled: a.Updater.Disabled, HelloExtra: a.helloExtra,
+		// A status check that outlasted hello changes only this process's report, so no other process is told.
+		Changed: a.refreshHere,
 	}
 	return a, nil
 }
@@ -291,6 +293,11 @@ func (a *Agent) refreshPath() string { return filepath.Join(a.EnvDir, ".hello-re
 // hello, for example after a sign-in.
 func (a *Agent) RefreshHello() {
 	_ = os.WriteFile(a.refreshPath(), []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o600)
+	a.refreshHere()
+}
+
+// refreshHere asks this process's relay connection to send a fresh hello.
+func (a *Agent) refreshHere() {
 	select {
 	case a.refresh <- struct{}{}:
 	default:
