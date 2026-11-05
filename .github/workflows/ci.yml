@@ -35,6 +35,21 @@ jobs:
             CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go vet ./... || exit 1
           done
 
+  linux-no-systemd:
+    # The server install line in a clean Ubuntu container, which has no systemd (like Docker, WSL and small VPS
+    # images): as root, as a normal user and with cron, it must pair and keep running in the background.
+    # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - run: scripts/test-install-no-systemd.sh
+
   macos:
     # The macOS tray needs cgo, which only builds on a Mac.
     # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
