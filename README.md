@@ -38,7 +38,8 @@ releases, so `https://github.com/Firmary/bridge/releases/latest/download/<file>`
 | `Firmary-Bridge.dmg`                                                   | Mac (Apple silicon and Intel), macOS 13+    |
 | `Firmary-Bridge-Setup.exe`                                             | Windows 10 and 11 (x64 and Arm), per user   |
 | `Firmary-Link.dmg`, `Firmary-Link-Setup.exe`                           | The same two, under their 0.3.1 names       |
-| `firmary-link_<version>_amd64.deb`, `firmary-link_<version>_arm64.deb` | Linux desktop (Debian, Ubuntu)              |
+| `firmary-link_amd64.deb`, `firmary-link_arm64.deb`                     | Linux desktop (Debian, Ubuntu)              |
+| `firmary-link_<version>_amd64.deb`, `firmary-link_<version>_arm64.deb` | The same two, with the version in the name  |
 | `install.sh`, `firmary-link-linux-x64.tar.gz`, `-linux-arm64.tar.gz`   | Linux server or VPS                         |
 | `manifest.json`, `manifest.json.sig`, `checksums.txt`                  | The signed update manifest and the SHA-256s |
 
