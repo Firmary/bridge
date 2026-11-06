@@ -4,6 +4,7 @@ name: release
 # latest GitHub release: a beta, unsigned (ad-hoc signed on macOS; no Developer ID, notarization or Authenticode yet).
 # Installed copies update themselves from the release's signed manifest.json. The weekly schedule and a manual run
 # only re-sign the latest release's manifest with a fresh expiry, so copies keep trusting it between releases.
+# Only code on main is ever signed: a release tag must point at a commit on main, and the re-sign runs only from main.
 
 on:
   push:
@@ -48,6 +49,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0 # main's history, to check the tag is on it
+      - name: Check the tagged commit is on main
+        run: |
+          set -euo pipefail
+          # publish, which holds the signing key, needs this job: a tag anywhere else never gets signed.
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main; tag a commit on main"
+            exit 1
+          fi
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
@@ -190,8 +200,7 @@ jobs:
         env:
           LINK_UPDATE_SIGNING_KEY: ${{ secrets.LINK_UPDATE_SIGNING_KEY }}
         run: |
-          go run ./cmd/link-release manifest --version "$VERSION" --dist dist \
-            --base-url "https://github.com/Firmary/bridge/releases/download/v$VERSION" --out dist
+          go run ./cmd/link-release manifest --version "$VERSION" --dist dist --out dist
       - name: Write checksums.txt
         working-directory: dist
         run: |
@@ -211,7 +220,8 @@ jobs:
             --title "Firmary Bridge $VERSION (beta, unsigned)" --notes-file .github/release-notes.md
 
   refresh-manifest:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # From main only: a manual run on another branch would sign with that branch's code and provider pins.
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     # GitHub-hosted only. This code runs on people's computers; never build it on a self-hosted runner.
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -228,7 +238,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Download the latest manifest
+      - name: Download the latest manifest and its signature
         id: latest
         env:
           GH_TOKEN: ${{ github.token }}
@@ -236,11 +246,13 @@ jobs:
           set -euo pipefail
           tag=$(gh release view --json tagName --jq .tagName)
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          gh release download "$tag" --pattern manifest.json --dir old
+          gh release download "$tag" --pattern manifest.json --pattern manifest.json.sig --dir old
       - name: Re-sign it
         env:
           LINK_UPDATE_SIGNING_KEY: ${{ secrets.LINK_UPDATE_SIGNING_KEY }}
-        run: go run ./cmd/link-release refresh --in old/manifest.json --out new
+        # refresh re-signs only a manifest whose signature verifies against the pinned keys, and whose downloads are
+        # all in its own version's release.
+        run: go run ./cmd/link-release refresh --in old/manifest.json --sig old/manifest.json.sig --out new
       - name: Replace it on the release
         env:
           GH_TOKEN: ${{ github.token }}

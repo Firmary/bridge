@@ -220,6 +220,9 @@ export const TicketClaims = z.looseObject({
     the ticket has no `providerOrgIds`. A personal-plan login with no claim still runs.
 - **`iat` rule (verifier, not schema):** the Helper refuses a ticket whose `iat` is earlier than the whole second
   its process started, with `policy` / `ticket_predates_start`. Update the comment on `TicketClaims` to say so.
+  Used ticket ids are also kept on disk, so a ticket issued ahead of the Link's clock and used just before a restart
+  is still `ticket_replayed` after it. If that record can't be read, tickets issued before the start plus 30 seconds
+  of clock skew get `ticket_predates_start`; if a use can't be recorded, the ticket is refused with `policy` / `ticket_unrecorded`.
 
 ## 5. New error patterns the server must handle
 
@@ -229,6 +232,7 @@ handling must know them.
 | Class | Pattern | Server action |
 | ----- | ------- | ------------- |
 | `policy` | `ticket_predates_start` | Re-issue the ticket with a fresh `iat`. After any new `hello`, re-issue pending tickets rather than resending them. |
+| `policy` | `ticket_unrecorded` | Don't retry. The Link couldn't record the ticket as used (its data directory isn't writable). |
 | `policy` | `provider_org_not_allowed` | Don't retry. Tell the person their Claude login is in another organisation, or is a business plan with no firm organisation on the ticket. |
 | `transient` | `turn_timeout` | The turn ran past the Helper's 15-minute deadline. Don't auto-retry a turn whose output had started. |
 

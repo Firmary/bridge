@@ -61,8 +61,11 @@ releases, so `https://github.com/Firmary/bridge/releases/latest/download/<file>`
   `firmary-link status`, `firmary-link pair --code ABCD-EFGH`, `firmary-link unpair`,
   `firmary-link sign-in claude|chatgpt --device`, `firmary-link service status`.
 
-A `vX.Y.Z` tag (plain semver, 0.2.0 or later) builds and publishes the release (`.github/workflows/release.yml`,
-GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fresh expiry.
+A `vX.Y.Z` tag (plain semver, 0.2.0 or later) on a commit on `main` builds and publishes the release
+(`.github/workflows/release.yml`, GitHub-hosted runners only); a weekly run from `main` re-signs the latest manifest
+with a fresh expiry, only once its existing signature verifies. A manifest may offer a download only from the
+release of its own version (`https://github.com/Firmary/bridge/releases/download/vX.Y.Z/`); the Link refuses any
+other.
 
 ## Where this comes from
 

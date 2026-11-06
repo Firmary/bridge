@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -83,5 +85,56 @@ func TestVerify(t *testing.T) {
 	// No pinned keys: refuse everything.
 	if _, err := NewVerifier(nil, nil).Verify(Sign(priv, good())); !errors.Is(err, ReasonNoKeys) {
 		t.Errorf("no keys: got %v", err)
+	}
+}
+
+// TestUsedTicketStaysUsedAfterRestart: a ticket issued ahead of this computer's clock (within ClockSkew), used, and
+// presented again to a Link restarted a few seconds later is a replay, not a fresh ticket.
+func TestUsedTicketStaysUsedAfterRestart(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	keys := []ed25519.PublicKey{pub}
+	now := time.Unix(1_800_000_000, 0)
+	clock := func() time.Time { return now }
+	tok := func(id string, iat time.Time) string {
+		return Sign(priv, Claims{TicketID: id, DeviceID: "d1", UserID: "u1", FirmID: "f1", Adapter: "helper-claude-code",
+			Model: "m", Pin: "2.1.304", Trigger: Trigger{Kind: "interactive"}, MaxOutputTokens: 1, PromptHash: "ab",
+			AccountTypes: []string{"team"}, ProfileHash: "cd", ProfileVersion: "p0", IssuedAt: iat.Unix(),
+			ExpiresAt: iat.Add(MaxLifetime).Unix()})
+	}
+	path := filepath.Join(t.TempDir(), "used-tickets.json")
+	ahead := tok("t1", now.Add(20*time.Second))
+
+	before := NewVerifier(keys, clock)
+	before.Remember(path)
+	if _, err := before.Verify(ahead); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(5 * time.Second) // the Link restarts
+	after := NewVerifier(keys, clock)
+	after.Remember(path)
+	if _, err := after.Verify(ahead); !errors.Is(err, ReasonReplayed) {
+		t.Fatalf("replay after restart: got %v", err)
+	}
+	if _, err := after.Verify(tok("t2", now)); err != nil {
+		t.Fatalf("a new ticket after restart: %v", err)
+	}
+
+	// The record can't be read: any ticket the previous process could have used is refused, later ones run.
+	os.WriteFile(path, []byte("{not json"), 0o600)
+	unsure := NewVerifier(keys, clock)
+	unsure.Remember(path)
+	if _, err := unsure.Verify(tok("t3", now.Add(ClockSkew-time.Second))); !errors.Is(err, ReasonPredatesStart) {
+		t.Fatalf("unreadable record, ticket within the skew: got %v", err)
+	}
+	now = now.Add(ClockSkew)
+	if _, err := unsure.Verify(tok("t4", now)); err != nil {
+		t.Fatalf("unreadable record, ticket after the skew: %v", err)
+	}
+
+	// A use that can't be recorded doesn't run.
+	nowhere := NewVerifier(keys, clock)
+	nowhere.Remember(filepath.Join(t.TempDir(), "missing", "used-tickets.json"))
+	if _, err := nowhere.Verify(tok("t5", now)); !errors.Is(err, ReasonUnrecorded) {
+		t.Fatalf("unrecorded use: got %v", err)
 	}
 }
