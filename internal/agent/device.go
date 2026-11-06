@@ -2,7 +2,6 @@ package agent
 
 import (
 	"os"
-	"os/exec"
 	"runtime"
 	"strings"
 	"unicode"
@@ -10,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Firmary/bridge/internal/helper"
+	"github.com/Firmary/bridge/internal/proc"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -33,7 +33,7 @@ func PairingDevice(kind string) *protocol.PairingDevice {
 func computerName() string {
 	switch runtime.GOOS {
 	case "darwin":
-		if out, err := exec.Command("/usr/sbin/scutil", "--get", "ComputerName").Output(); err == nil {
+		if out, err := proc.Command("/usr/sbin/scutil", "--get", "ComputerName").Output(); err == nil {
 			if n := strings.TrimSpace(string(out)); n != "" {
 				return n
 			}

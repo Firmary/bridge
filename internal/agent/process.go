@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Firmary/bridge/internal/proc"
 	"github.com/Firmary/bridge/internal/update"
 )
 
@@ -44,9 +45,8 @@ func childEnv(reason string) []string {
 
 // selfTestCommand runs a downloaded Link's self-test on this data directory.
 func selfTestCommand(ctx context.Context, path, root string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, path, "self-test", "--data-dir", root)
+	cmd := proc.CommandContext(ctx, path, "self-test", "--data-dir", root)
 	cmd.Env = childEnv("")
-	hideWindow(cmd)
 	return cmd
 }
 

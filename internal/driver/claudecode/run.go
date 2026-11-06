@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"math"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -19,6 +18,7 @@ import (
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/launch"
+	"github.com/Firmary/bridge/internal/proc"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -134,7 +134,7 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 		return fail(protocol.ClassFatal, "profile_unavailable")
 	}
 
-	cmd := exec.CommandContext(ctx, bin, runArgs(p, t.Model, t.Launch)...)
+	cmd := proc.CommandContext(ctx, bin, runArgs(p, t.Model, t.Launch)...)
 	cmd.Dir = workDir(p)
 	set := map[string]string{"CLAUDE_CODE_MAX_OUTPUT_TOKENS": strconv.Itoa(t.MaxOutputTokens)}
 	for k, v := range d.extraEnv {

@@ -2,21 +2,20 @@ package notify
 
 import (
 	"context"
-	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/Firmary/bridge/internal/proc"
 )
 
 // show raises a Windows toast through PowerShell's WinRT access, with the text on stdin and no window.
 func show(title, body string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-")
+	cmd := proc.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-")
 	cmd.Stdin = strings.NewReader(toastScript(title, body))
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	_ = cmd.Run()
 }
 

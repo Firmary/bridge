@@ -5,10 +5,12 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/Firmary/bridge/internal/proc"
 )
 
 func osascript(ctx context.Context, script string) (string, error) {
-	cmd := exec.CommandContext(ctx, "osascript", "-")
+	cmd := proc.CommandContext(ctx, "osascript", "-")
 	cmd.Stdin = strings.NewReader(script)
 	out, err := cmd.Output()
 	return string(out), err

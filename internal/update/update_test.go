@@ -171,7 +171,8 @@ func TestRefusesTamperedReplayedExpiredAndForeignManifests(t *testing.T) {
 	}
 
 	// Accept 20, then a validly signed older manifest (19) and a different one at 20 are replays.
-	if err := g.apply(g.manifest(20, "0.2.0", []byte("same"))); err != nil {
+	accepted := g.manifest(20, "0.2.0", []byte("same"))
+	if err := g.apply(accepted); err != nil {
 		t.Fatal(err)
 	}
 	if err := g.apply(g.manifest(19, "0.2.1", []byte("v0.2.1"))); !errors.Is(err, ErrReplayed) {
@@ -184,8 +185,9 @@ func TestRefusesTamperedReplayedExpiredAndForeignManifests(t *testing.T) {
 	if g.restarted != "" {
 		t.Fatal("a replay started an update")
 	}
-	// The manifest already accepted, fetched again, is fine.
-	if err := g.apply(g.manifest(20, "0.2.0", []byte("same"))); err != nil {
+	// The manifest already accepted, fetched again, is fine. It is the same bytes: a new manifest(20, ...) can carry
+	// a later Expires second, which is other content.
+	if err := g.apply(accepted); err != nil {
 		t.Fatalf("refetch of the accepted manifest: %v", err)
 	}
 }

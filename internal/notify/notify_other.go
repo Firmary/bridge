@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/godbus/dbus/v5"
+
+	"github.com/Firmary/bridge/internal/proc"
 )
 
 // show sends a desktop notification over the session bus (org.freedesktop.Notifications).
@@ -44,7 +46,7 @@ func askText(ctx context.Context, title, prompt, ok string) (string, bool) {
 	if strings.HasSuffix(path, "zenity") {
 		args = []string{"--entry", "--title", title, "--text", prompt, "--ok-label", ok, "--timeout", "600"}
 	}
-	out, err := exec.CommandContext(ctx, path, args...).Output()
+	out, err := proc.CommandContext(ctx, path, args...).Output()
 	if err != nil || ctx.Err() != nil {
 		return "", false
 	}

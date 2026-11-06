@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/proc"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -83,7 +83,7 @@ func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, ui d
 	}
 	ctx, cancel := context.WithTimeout(ctx, SignInTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "auth", "login", "--claudeai")
+	cmd := proc.CommandContext(ctx, bin, "auth", "login", "--claudeai")
 	cmd.Dir = workDir(p)
 	cmd.Env = Env(d.environ(), configDir(p), nil)
 	if kind == driver.SignInBrowser {
@@ -204,7 +204,7 @@ func (d *Driver) SignOut(ctx context.Context, p driver.Profile) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "auth", "logout")
+	cmd := proc.CommandContext(ctx, bin, "auth", "logout")
 	cmd.Dir = workDir(p)
 	cmd.Env = Env(d.environ(), configDir(p), nil)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard

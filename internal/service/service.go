@@ -14,6 +14,7 @@ import (
 
 	"github.com/Firmary/bridge/internal/brand"
 	"github.com/Firmary/bridge/internal/datadir"
+	"github.com/Firmary/bridge/internal/proc"
 )
 
 // Config says what the service runs.
@@ -113,7 +114,7 @@ func systemctl(c Config, args ...string) *exec.Cmd {
 	if !c.Root {
 		args = append([]string{"--user"}, args...)
 	}
-	return exec.Command("systemctl", args...)
+	return proc.Command("systemctl", args...)
 }
 
 func run(cmd *exec.Cmd) error {
@@ -225,7 +226,7 @@ func Stop(c Config) error {
 		}
 		return run(systemctl(c, "stop", UnitName))
 	case "darwin":
-		return run(exec.Command("launchctl", "bootout", launchdTarget()))
+		return run(proc.Command("launchctl", "bootout", launchdTarget()))
 	case "windows":
 		return stopTask()
 	}
@@ -245,7 +246,7 @@ func Start(c Config) error {
 		}
 		return run(systemctl(c, "start", UnitName))
 	case "darwin":
-		return run(exec.Command("launchctl", "bootstrap", launchdDomain(), launchdPlist(c.Home)))
+		return run(proc.Command("launchctl", "bootstrap", launchdDomain(), launchdPlist(c.Home)))
 	case "windows":
 		return startTask()
 	}
@@ -277,8 +278,8 @@ func installSystemd(c Config) (Result, error) {
 		if user == "" {
 			user = strconv.Itoa(os.Getuid())
 		}
-		_ = run(exec.Command("loginctl", "enable-linger", user))
-		out, _ := exec.Command("loginctl", "show-user", user, "--property=Linger", "--value").Output()
+		_ = run(proc.Command("loginctl", "enable-linger", user))
+		out, _ := proc.Command("loginctl", "show-user", user, "--property=Linger", "--value").Output()
 		res.Lingering = strings.TrimSpace(string(out)) == "yes"
 	}
 	return res, nil

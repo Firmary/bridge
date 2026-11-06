@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Firmary/bridge/internal/proc"
 )
 
 // The background service, for a Linux server without systemd (a Docker container, WSL without systemd, a small VPS
@@ -149,7 +151,7 @@ func startBackground(c Config) error {
 	if _, running := supervisorRunning(dir); running {
 		return nil
 	}
-	cmd := exec.Command(rec.Exe, SuperviseCommand, dir)
+	cmd := proc.Command(rec.Exe, SuperviseCommand, dir)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err
@@ -232,7 +234,7 @@ func superviseOnce(ctx context.Context, dir string, rec backgroundCmd) {
 	if log != nil {
 		defer log.Close()
 	}
-	cmd := exec.Command(rec.Exe, rec.Args...)
+	cmd := proc.Command(rec.Exe, rec.Args...)
 	cmd.Env = append(os.Environ(), rec.Env...)
 	if log != nil {
 		cmd.Stdout, cmd.Stderr = log, log
@@ -322,7 +324,7 @@ func setCron(line string) error {
 	}
 	// `crontab -l` fails when the user has no crontab yet: that is an empty one. Any other failure leaves the crontab
 	// alone, so a read that broke off never replaces the person's own lines.
-	current, err := exec.Command("crontab", "-l").Output()
+	current, err := proc.Command("crontab", "-l").Output()
 	if err != nil {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) || !strings.Contains(string(exit.Stderr), "no crontab") {
@@ -334,7 +336,7 @@ func setCron(line string) error {
 	if next == string(current) {
 		return nil
 	}
-	cmd := exec.Command("crontab", "-")
+	cmd := proc.Command("crontab", "-")
 	cmd.Stdin = strings.NewReader(next)
 	return run(cmd)
 }
