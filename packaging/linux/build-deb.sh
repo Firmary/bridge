@@ -1,10 +1,12 @@
 #!/bin/bash
-# Build the Firmary Bridge .deb for one architecture. The package, command and file names keep their Firmary Link
-# names (firmary-link), so installing it over an older one upgrades it.
+# Build the Firmary Bridge .deb for one architecture. The package is firmary-bridge (0.3.5 on); it replaces the
+# firmary-link package of 0.2.0 to 0.3.4, so installing it over one of those upgrades it. The files it installs keep
+# their Firmary Link names (the firmary-link command, desktop entry and icon): an installed copy, its service and its
+# open-at-login entry find them there.
 #
 #   packaging/linux/build-deb.sh VERSION ARCH BINARY OUTDIR      (ARCH: amd64 or arm64)
 #
-# Writes OUTDIR/firmary-link_<VERSION>_<ARCH>.deb. Needs dpkg-deb only.
+# Writes OUTDIR/firmary-bridge_<VERSION>_<ARCH>.deb. Needs dpkg-deb only.
 set -euo pipefail
 
 if [ "$#" -ne 4 ]; then
@@ -23,7 +25,8 @@ mkdir -p "$outdir"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 pkg="$work/pkg"
-doc="$pkg/usr/share/doc/firmary-link"
+package=firmary-bridge
+doc="$pkg/usr/share/doc/$package"
 
 install -d -m 0755 "$pkg/DEBIAN" "$pkg/usr/bin" "$pkg/usr/share/applications" \
   "$pkg/usr/share/icons/hicolor/256x256/apps" "$doc"
@@ -34,7 +37,7 @@ install -m 0644 "$root/assets/linux/firmary-link.png" "$pkg/usr/share/icons/hico
 {
   cat <<'COPYRIGHT'
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: firmary-link
+Upstream-Name: firmary-bridge
 Upstream-Contact: Firmary <admin@firmary.app>
 Source: https://github.com/Firmary/bridge
 
@@ -54,18 +57,23 @@ chmod 0644 "$doc/copyright"
 
 # A pure-Go (CGO_ENABLED=0) build is static by design.
 install -d -m 0755 "$pkg/usr/share/lintian/overrides"
-echo 'firmary-link: statically-linked-binary [usr/bin/firmary-link]' > "$pkg/usr/share/lintian/overrides/firmary-link"
-chmod 0644 "$pkg/usr/share/lintian/overrides/firmary-link"
+echo "$package: statically-linked-binary [usr/bin/firmary-link]" > "$pkg/usr/share/lintian/overrides/$package"
+chmod 0644 "$pkg/usr/share/lintian/overrides/$package"
 
-printf 'firmary-link (%s) stable; urgency=medium\n\n  * Firmary Bridge %s.\n\n -- Firmary <admin@firmary.app>  %s\n' \
-  "$version" "$version" "$(date -u -R)" | gzip -9n > "$doc/changelog.gz"
+printf '%s (%s) stable; urgency=medium\n\n  * Firmary Bridge %s.\n\n -- Firmary <admin@firmary.app>  %s\n' \
+  "$package" "$version" "$version" "$(date -u -R)" | gzip -9n > "$doc/changelog.gz"
 chmod 0644 "$doc/changelog.gz"
 
 size=$(du -sk --exclude=DEBIAN "$pkg" | cut -f1)
+# Conflicts, Replaces and Provides firmary-link: installing this removes the old package and takes over its files,
+# and anything that asked for firmary-link is still satisfied (Debian Policy 7.6.2, replacing whole packages).
 cat > "$pkg/DEBIAN/control" <<CONTROL
-Package: firmary-link
+Package: $package
 Version: $version
 Architecture: $arch
+Conflicts: firmary-link
+Replaces: firmary-link
+Provides: firmary-link
 Maintainer: Firmary <admin@firmary.app>
 Installed-Size: $size
 Section: net
@@ -78,7 +86,7 @@ Description: connect your own Claude or ChatGPT plan to Firmary
 CONTROL
 chmod 0644 "$pkg/DEBIAN/control"
 
-deb="$outdir/firmary-link_${version}_${arch}.deb"
+deb="$outdir/${package}_${version}_${arch}.deb"
 # xz rather than dpkg's newer zstd default, so older Debian and Ubuntu releases can read it.
 dpkg-deb -Zxz --root-owner-group --build "$pkg" "$deb"
 echo "built $deb"
