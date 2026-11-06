@@ -5,13 +5,13 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/Firmary/bridge/internal/brand"
+	"github.com/Firmary/bridge/internal/proc"
 )
 
 func launchdDomain() string { return "gui/" + strconv.Itoa(os.Getuid()) }
@@ -60,8 +60,8 @@ func installLaunchd(c Config, start bool) (Result, error) {
 		return Result{}, err
 	}
 	if start {
-		_ = exec.Command("launchctl", "bootout", launchdTarget()).Run()
-		if err := run(exec.Command("launchctl", "bootstrap", launchdDomain(), path)); err != nil {
+		_ = proc.Command("launchctl", "bootout", launchdTarget()).Run()
+		if err := run(proc.Command("launchctl", "bootstrap", launchdDomain(), path)); err != nil {
 			return Result{}, err
 		}
 	}
@@ -69,7 +69,7 @@ func installLaunchd(c Config, start bool) (Result, error) {
 }
 
 func uninstallLaunchd(c Config) error {
-	_ = exec.Command("launchctl", "bootout", launchdTarget()).Run()
+	_ = proc.Command("launchctl", "bootout", launchdTarget()).Run()
 	if err := os.Remove(launchdPlist(c.Home)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -84,7 +84,7 @@ func queryLaunchd(c Config) Status {
 			st.Kind = "login item"
 		}
 	}
-	out, err := exec.Command("launchctl", "print", launchdTarget()).Output()
+	out, err := proc.Command("launchctl", "print", launchdTarget()).Output()
 	st.Running = err == nil && strings.Contains(string(out), "state = running")
 	return st
 }

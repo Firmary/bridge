@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -21,6 +20,7 @@ import (
 	"github.com/ProtonMail/go-crypto/openpgp"
 
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/proc"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -182,7 +182,7 @@ func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderS
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "auth", "status", "--json")
+	cmd := proc.CommandContext(ctx, bin, "auth", "status", "--json")
 	cmd.Dir = workDir(p)
 	cmd.Env = Env(d.environ(), configDir(p), nil)
 	cmd.Stdin = nil

@@ -24,6 +24,7 @@ import (
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/launch"
+	"github.com/Firmary/bridge/internal/proc"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -251,7 +252,7 @@ func (d *Driver) prepareIdle(p driver.Profile) error {
 // command builds a Codex invocation in the profile: Link settings both in config.toml and as -c session flags
 // (which outrank a project's .codex/config.toml), scrubbed environment, the empty work directory, no stdin.
 func (d *Driver) command(ctx context.Context, bin string, p driver.Profile, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := proc.CommandContext(ctx, bin, args...)
 	cmd.Dir = workDir(p)
 	cmd.Env = append(Env(d.environ(), codexHome(p)), d.extraEnv...)
 	cmd.Stdin = nil

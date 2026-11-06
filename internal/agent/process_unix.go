@@ -5,12 +5,9 @@ package agent
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"syscall"
 )
-
-func hideWindow(*exec.Cmd) {}
 
 // replace execs path in this process: same PID, so systemd and launchd keep supervising it.
 func replace(path string, env []string) error {

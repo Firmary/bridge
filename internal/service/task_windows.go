@@ -4,22 +4,16 @@ package service
 
 import (
 	"errors"
-	"os/exec"
 	"strings"
-	"syscall"
 
 	"golang.org/x/sys/windows/registry"
 
 	"github.com/Firmary/bridge/internal/brand"
+	"github.com/Firmary/bridge/internal/proc"
 )
 
 // The logon task and the Run value are named brand.InstallName; the installer uses the same names.
 const runKeyPath = `Software\Microsoft\Windows\CurrentVersion\Run`
-
-func hidden(cmd *exec.Cmd) *exec.Cmd {
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
-	return cmd
-}
 
 func commandLine(c Config) string {
 	s := `"` + c.Exe + `"`
@@ -35,8 +29,8 @@ func commandLine(c Config) string {
 // installTask makes a logon task for this user, so the Link starts at sign-in and restarts if it stops. Where
 // Windows refuses a logon task without administrator rights, the per-user Run value does the same job.
 func installTask(c Config) (Result, error) {
-	err := run(hidden(exec.Command("schtasks", "/Create", "/F", "/TN", brand.InstallName, "/SC", "ONLOGON", "/RL", "LIMITED",
-		"/TR", commandLine(c))))
+	err := run(proc.Command("schtasks", "/Create", "/F", "/TN", brand.InstallName, "/SC", "ONLOGON", "/RL", "LIMITED",
+		"/TR", commandLine(c)))
 	if err != nil {
 		if err := setRunKey(commandLine(c), true); err != nil {
 			return Result{}, err
@@ -46,13 +40,13 @@ func installTask(c Config) (Result, error) {
 }
 
 func uninstallTask(c Config) error {
-	_ = run(hidden(exec.Command("schtasks", "/Delete", "/F", "/TN", brand.InstallName)))
+	_ = run(proc.Command("schtasks", "/Delete", "/F", "/TN", brand.InstallName))
 	return nil
 }
 
 func queryTask(c Config) Status {
 	st := Status{Kind: "logon task", Path: brand.InstallName}
-	out, err := hidden(exec.Command("schtasks", "/Query", "/TN", brand.InstallName, "/FO", "LIST")).Output()
+	out, err := proc.Command("schtasks", "/Query", "/TN", brand.InstallName, "/FO", "LIST").Output()
 	if err == nil {
 		st.Installed = true
 		st.Running = strings.Contains(string(out), "Running")
@@ -60,13 +54,13 @@ func queryTask(c Config) Status {
 	return st
 }
 
-func stopTask() error { return run(hidden(exec.Command("schtasks", "/End", "/TN", brand.InstallName))) }
+func stopTask() error { return run(proc.Command("schtasks", "/End", "/TN", brand.InstallName)) }
 
 func startTask(cs ...Config) error {
-	if err := run(hidden(exec.Command("schtasks", "/Run", "/TN", brand.InstallName))); err == nil || len(cs) == 0 {
+	if err := run(proc.Command("schtasks", "/Run", "/TN", brand.InstallName)); err == nil || len(cs) == 0 {
 		return err
 	}
-	cmd := exec.Command(cs[0].Exe, cs[0].args()...)
+	cmd := proc.Command(cs[0].Exe, cs[0].args()...)
 	return cmd.Start()
 }
 

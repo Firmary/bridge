@@ -7,21 +7,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 
 	"golang.org/x/sys/windows"
-)
 
-func hideWindow(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
-}
+	"github.com/Firmary/bridge/internal/proc"
+)
 
 // replace starts path with this process's arguments and ends this one. Windows can't exec in place, and keeps
 // a running .exe locked, which is why updates live in their own versions directory. The launcher waits for the
 // child so a logon task sees it run; an update switch exits at once. A command run from a terminal attaches to it
 // itself (cmd/firmary-link attachConsole).
 func replace(path string, env []string) error {
-	cmd := exec.Command(path, os.Args[1:]...)
+	cmd := proc.Command(path, os.Args[1:]...)
 	cmd.Env = env
 	if err := cmd.Start(); err != nil {
 		return err
