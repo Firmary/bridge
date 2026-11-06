@@ -15,7 +15,9 @@ paired, signed in and set to open at login. On a server, the command is still `f
   macOS blocks it: open **System Settings › Privacy & Security**, scroll down and click **Open Anyway**.
 - **Windows:** run `Firmary-Bridge-Setup.exe`. If SmartScreen says "Windows protected your PC", click **More info ›
   Run anyway**.
-- **Linux desktop:** install the `.deb` for your computer (`amd64` for most, `arm64` for Arm).
+- **Linux desktop:** download `firmary-bridge_amd64.deb` (`firmary-bridge_arm64.deb` for Arm), then open it and
+  choose **Install**, or run `sudo apt install ./firmary-bridge_*.deb` in its folder. It upgrades an installed
+  `firmary-link` package in place.
 - **Linux server or VPS:** in Firmary, open Settings › Connections › Add a server and paste the one line it shows
   (it carries your pairing code), then confirm the code in Firmary:
 
@@ -34,8 +36,9 @@ Once installed, Firmary Bridge updates itself quietly from this release's signed
 | ------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | `Firmary-Bridge.dmg`                                                                  | Mac (Apple silicon and Intel), macOS 13 or later           |
 | `Firmary-Bridge-Setup.exe`                                                            | Windows 10 and 11 (x64 and Arm)                            |
-| `Firmary-Link.dmg`, `Firmary-Link-Setup.exe`                                          | The same two files under their old names, for older links  |
-| `firmary-link_<version>_amd64.deb`, `firmary-link_<version>_arm64.deb`                | Linux desktop (Debian, Ubuntu)                             |
+| `firmary-bridge_amd64.deb`, `firmary-bridge_arm64.deb`                                | Linux desktop (Debian, Ubuntu)                             |
+| `firmary-bridge_<version>_amd64.deb`, `firmary-bridge_<version>_arm64.deb`            | The same two, with the version in the name                 |
+| `firmary-link_amd64.deb`, `firmary-link_arm64.deb`                                    | The same two under their old names, for older links        |
 | `install.sh`, `firmary-link-linux-x64.tar.gz`, `firmary-link-linux-arm64.tar.gz`      | Linux server; the tarballs are what `install.sh` downloads |
 | `firmary-link-darwin-universal`, `firmary-link-linux-*`, `firmary-link-windows-*.exe` | The app on its own, used by updates                        |
 | `manifest.json`, `manifest.json.sig`                                                  | The signed update manifest                                 |

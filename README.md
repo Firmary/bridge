@@ -9,8 +9,9 @@ People see it as **Firmary Bridge**. The name lives in [`internal/brand/brand.go
 test fails if any other Go file spells it out. It was the "Firmary Helper" in the first beta; a computer paired with
 that beta moves its data to the new name on first run and stays paired. From 0.2.0 to 0.3.1 it was **Firmary Link**
 (the code still calls it "the Link"). That rename changed only what people see: the command (`firmary-link`), the
-macOS bundle id (`app.firmary.link`), the Linux package, the data folders and the Windows install folder, Run value,
-logon task and uninstall key keep the Firmary Link names (`brand.InstallName`). The updater keeps new versions in the
+macOS bundle id (`app.firmary.link`), the data folders and the Windows install folder, Run value, logon task and
+uninstall key keep the Firmary Link names (`brand.InstallName`). The Linux package is `firmary-bridge` from 0.3.5; it
+replaces the `firmary-link` package, so installing it over one upgrades it. The updater keeps new versions in the
 data folder and the copy installed first reads it to find them, so these names can't move without stranding an
 install. Installing 0.3.2 or later over a Link upgrades it in place: on Windows the installer swaps the Start menu
 entry and the name in Apps; on a Mac, once the old "Firmary Link" app is deleted, Firmary Bridge points the login
@@ -33,15 +34,19 @@ the release's signed update manifest.
 From the [latest release](https://github.com/Firmary/bridge/releases/latest). The names don't change between
 releases, so `https://github.com/Firmary/bridge/releases/latest/download/<file>` always gives the newest:
 
-| File                                                                   | For                                         |
-| ---------------------------------------------------------------------- | ------------------------------------------- |
-| `Firmary-Bridge.dmg`                                                   | Mac (Apple silicon and Intel), macOS 13+    |
-| `Firmary-Bridge-Setup.exe`                                             | Windows 10 and 11 (x64 and Arm), per user   |
-| `Firmary-Link.dmg`, `Firmary-Link-Setup.exe`                           | The same two, under their 0.3.1 names       |
-| `firmary-link_amd64.deb`, `firmary-link_arm64.deb`                     | Linux desktop (Debian, Ubuntu)              |
-| `firmary-link_<version>_amd64.deb`, `firmary-link_<version>_arm64.deb` | The same two, with the version in the name  |
-| `install.sh`, `firmary-link-linux-x64.tar.gz`, `-linux-arm64.tar.gz`   | Linux server or VPS                         |
-| `manifest.json`, `manifest.json.sig`, `checksums.txt`                  | The signed update manifest and the SHA-256s |
+| File                                                                       | For                                         |
+| -------------------------------------------------------------------------- | ------------------------------------------- |
+| `Firmary-Bridge.dmg`                                                       | Mac (Apple silicon and Intel), macOS 13+    |
+| `Firmary-Bridge-Setup.exe`                                                 | Windows 10 and 11 (x64 and Arm), per user   |
+| `firmary-bridge_amd64.deb`, `firmary-bridge_arm64.deb`                     | Linux desktop (Debian, Ubuntu)              |
+| `firmary-bridge_<version>_amd64.deb`, `firmary-bridge_<version>_arm64.deb` | The same two, with the version in the name  |
+| `install.sh`, `firmary-link-linux-x64.tar.gz`, `-linux-arm64.tar.gz`       | Linux server or VPS                         |
+| `manifest.json`, `manifest.json.sig`, `checksums.txt`                      | The signed update manifest and the SHA-256s |
+
+The Linux packages carry the Firmary Bridge name from 0.3.5; 0.3.4 and before named them `firmary-link_*.deb`. 0.3.5
+also carries `firmary-link_amd64.deb` and `firmary-link_arm64.deb`, so links to the old names keep working while
+firmary.app moves to the new ones. The `Firmary-Link.dmg` and `Firmary-Link-Setup.exe` copies stopped with 0.3.4;
+older releases keep theirs.
 
 - **Mac**: open the dmg, drag **Firmary Bridge** to **Applications** and open it. The first time macOS blocks it: open
   **System Settings › Privacy & Security** and click **Open Anyway**.
