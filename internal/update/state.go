@@ -13,6 +13,7 @@ import (
 
 	"github.com/Firmary/bridge/internal/brand"
 	"github.com/Firmary/bridge/internal/driver"
+	"github.com/Firmary/bridge/internal/fsperm"
 	"github.com/Firmary/bridge/internal/protocol"
 )
 
@@ -120,7 +121,14 @@ func rollBack(st *State, pattern string) {
 // on trial and rolls back to the previous one when a new version keeps failing to start, or when its executable no
 // longer matches the checksum it was installed with. An installed executable newer than the updates (the person
 // installed a new release) wins.
+//
+// dir is the data directory's update directory. Nothing in it is read or run unless the data directory, dir, and
+// the chosen version's directories and executable belong to the person and no one else can write them: another local
+// user who could would otherwise choose what this process starts, before Agent.Open checks the same directories.
 func Choose(dir, installed string) string {
+	if !private(filepath.Dir(dir), dir) {
+		return ""
+	}
 	st, err := LoadState(dir)
 	if err != nil {
 		return ""
@@ -138,6 +146,9 @@ func Choose(dir, installed string) string {
 			st.TrialStarts++
 		}
 		path := Binary(dir, st.Current)
+		if !private(filepath.Dir(filepath.Dir(path)), filepath.Dir(path), path) {
+			return ""
+		}
 		if got, err := fileSHA256(path); err != nil || got != st.CurrentSHA256 {
 			rollBack(&st, "checksum_mismatch")
 			continue
@@ -149,6 +160,16 @@ func Choose(dir, installed string) string {
 	}
 	_ = SaveState(dir, st)
 	return ""
+}
+
+// private reports whether every path belongs to the current user and no one else can write it.
+func private(paths ...string) bool {
+	for _, p := range paths {
+		if fsperm.CheckOwned(p, 0o022) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // Commit keeps a version on trial: the running version has started, reached Firmary or run for a while.

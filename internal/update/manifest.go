@@ -45,6 +45,14 @@ func Keys() []ed25519.PublicKey {
 // ManifestURL is where the stable channel's manifest lives; the signature is at ManifestURL + ".sig".
 const ManifestURL = "https://github.com/Firmary/bridge/releases/latest/download/manifest.json"
 
+// DownloadBase is where every Link executable a manifest offers must download from: the Bridge release of the
+// manifest's own version, DownloadBase + "v" + version + "/" + file. A manifest naming any other host, repository or
+// release is malformed, so even a validly signed one can't point a Link elsewhere.
+const DownloadBase = "https://github.com/Firmary/bridge/releases/download/"
+
+// DownloadURL is the URL of file in the Bridge release of version.
+func DownloadURL(version, file string) string { return DownloadBase + "v" + version + "/" + file }
+
 // Size limits for what the updater reads.
 const (
 	MaxManifestBytes  = 1 << 20
@@ -106,7 +114,7 @@ var Sources = map[string]string{"claude-code": "anthropic-release-manifest", "co
 var (
 	versionRe     = regexp.MustCompile(`^\d{1,6}\.\d{1,6}\.\d{1,6}(?:-[0-9A-Za-z.-]{1,64})?$`)
 	sha256Re      = regexp.MustCompile(`^[a-f0-9]{64}$`)
-	httpsURLRe    = regexp.MustCompile(`^https://[A-Za-z0-9.-]+(?::\d{1,5})?(?:/[!-~]*)?$`)
+	fileNameRe    = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$`)
 	platformKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 	machineNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_.-]{0,63}$`)
 )
@@ -153,7 +161,8 @@ func Parse(body []byte) (Manifest, error) {
 		return m, ErrMalformed
 	}
 	for k, a := range m.Helper.Platforms {
-		if !platformKeyRe.MatchString(k) || !httpsURLRe.MatchString(a.URL) || len(a.URL) > 2048 || !sha256Re.MatchString(a.SHA256) {
+		file, inRelease := strings.CutPrefix(a.URL, DownloadURL(m.Helper.Version, ""))
+		if !platformKeyRe.MatchString(k) || !inRelease || !fileNameRe.MatchString(file) || !sha256Re.MatchString(a.SHA256) {
 			return m, ErrMalformed
 		}
 	}

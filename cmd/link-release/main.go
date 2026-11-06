@@ -2,12 +2,14 @@
 // writes and signs the update manifest a release publishes.
 //
 //	link-release keygen --out FILE                 write a new private key (base64 seed, mode 0600); print the public key
-//	link-release manifest --version V --dist DIR --base-url URL --out DIR
-//	link-release refresh --in manifest.json --out DIR
+//	link-release manifest --version V --dist DIR --out DIR
+//	link-release refresh --in manifest.json [--sig manifest.json.sig] --out DIR
 //	link-release verify --manifest FILE --sig FILE
 //
 // manifest and refresh sign with the base64 Ed25519 seed in LINK_UPDATE_SIGNING_KEY, and refuse a key whose public
-// half isn't pinned in this build (update.PublicKeys). The key is never printed.
+// half isn't pinned in this build (update.PublicKeys). The key is never printed. A manifest only ever offers downloads
+// from the Bridge release of its own version (update.DownloadBase), and refresh re-signs only a manifest whose
+// existing signature verifies against the pinned keys.
 package main
 
 import (
@@ -176,15 +178,14 @@ func manifest(args []string) error {
 	fs := flag.NewFlagSet("manifest", flag.ExitOnError)
 	version := fs.String("version", "", "Link version, e.g. 0.2.0")
 	dist := fs.String("dist", "dist", "directory with firmary-link-<platform>[.exe]")
-	baseURL := fs.String("base-url", "", "https URL the release's assets download from")
 	out := fs.String("out", "dist", "where to write manifest.json and manifest.json.sig")
 	rollout := fs.Int("rollout", 100, "percent of devices that get this version")
 	minVersion := fs.String("min-version", "0.2.0", "minHelperVersion: older Links update whatever the rollout")
 	days := fs.Int("expires-days", 30, "days until the manifest expires")
 	note := fs.String("whats-new", "", "one line of release notes")
 	fs.Parse(args)
-	if !update.IsRelease(*version) || !strings.HasPrefix(*baseURL, "https://") {
-		return errors.New("--version must be a release version and --base-url https")
+	if !update.IsRelease(*version) {
+		return errors.New("--version must be a release version")
 	}
 	m := update.Manifest{Schema: 1, Sequence: sequence(0), Expires: expires(*days), MinHelperVersion: *minVersion,
 		Helper:           update.HelperRelease{Version: *version, RolloutPercent: *rollout, Platforms: map[string]update.HelperArtifact{}},
@@ -204,7 +205,7 @@ func manifest(args []string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
-		m.Helper.Platforms[p] = update.HelperArtifact{URL: strings.TrimSuffix(*baseURL, "/") + "/" + name, SHA256: sum}
+		m.Helper.Platforms[p] = update.HelperArtifact{URL: update.DownloadURL(*version, name), SHA256: sum}
 	}
 	return write(m, *out)
 }
@@ -212,12 +213,25 @@ func manifest(args []string) error {
 func refresh(args []string) error {
 	fs := flag.NewFlagSet("refresh", flag.ExitOnError)
 	in := fs.String("in", "", "the current manifest.json")
+	sigFile := fs.String("sig", "", "its signature (default: --in with .sig added)")
 	out := fs.String("out", "", "where to write the refreshed manifest")
 	days := fs.Int("expires-days", 30, "days until the manifest expires")
 	fs.Parse(args)
+	if *sigFile == "" {
+		*sigFile = *in + ".sig"
+	}
 	body, err := os.ReadFile(*in)
 	if err != nil {
 		return err
+	}
+	sig, err := os.ReadFile(*sigFile)
+	if err != nil {
+		return err
+	}
+	// Only what Firmary already signed is re-signed: a manifest swapped on the release (by anyone who can upload
+	// assets) would otherwise come back with a fresh, valid signature.
+	if err := update.Verify(body, sig, update.Keys()); err != nil {
+		return fmt.Errorf("%s is not signed by a pinned update key; refusing to re-sign it", *in)
 	}
 	m, err := update.Parse(body)
 	if err != nil {

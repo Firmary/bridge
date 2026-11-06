@@ -12,21 +12,10 @@ import (
 
 // show raises a Windows toast through PowerShell's WinRT access, with the text on stdin and no window.
 func show(title, body string) {
-	xml := "<toast><visual><binding template='ToastGeneric'><text>" + xmlEscape(title) + "</text><text>" +
-		xmlEscape(body) + "</text></binding></visual></toast>"
-	script := strings.Join([]string{
-		"[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null",
-		"[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null",
-		"$x = New-Object Windows.Data.Xml.Dom.XmlDocument",
-		"$x.LoadXml(" + powershell(xml) + ")",
-		"$t = [Windows.UI.Notifications.ToastNotification]::new($x)",
-		// PowerShell's own app id, which Windows lets show toasts without registering one.
-		"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($t)",
-	}, "\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "-")
-	cmd.Stdin = strings.NewReader(script)
+	cmd.Stdin = strings.NewReader(toastScript(title, body))
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
 	_ = cmd.Run()
 }
