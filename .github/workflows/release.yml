@@ -195,6 +195,9 @@ jobs:
           # The same files under their Firmary Link names (0.3.1 and before), so links to latest/download keep working.
           cp dist/Firmary-Bridge.dmg dist/Firmary-Link.dmg
           cp dist/Firmary-Bridge-Setup.exe dist/Firmary-Link-Setup.exe
+          # The Linux packages under names without the version, so firmary.app can link the file itself, as for the dmg.
+          cp "dist/firmary-link_${VERSION}_amd64.deb" dist/firmary-link_amd64.deb
+          cp "dist/firmary-link_${VERSION}_arm64.deb" dist/firmary-link_arm64.deb
           ls -la dist
       - name: Sign the update manifest
         env:
