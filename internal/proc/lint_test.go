@@ -12,8 +12,9 @@ import (
 )
 
 // TestOnlyProcStarts is the no-window lint: outside this package, production code starts child processes only through
-// proc.Command and proc.CommandContext, never exec.Command, exec.CommandContext, os.StartProcess or
-// syscall.StartProcess, so no new call site can flash a console window on Windows.
+// proc.Command and proc.CommandContext, never exec.Command, exec.CommandContext, os.StartProcess or the syscall and
+// x/sys/windows process calls, so no new call site can flash a console window on Windows. Those packages may not be
+// dot-imported, which would hide the calls from this check.
 func TestOnlyProcStarts(t *testing.T) {
 	root, _ := filepath.Abs("../..")
 	fset := token.NewFileSet()
@@ -41,11 +42,16 @@ func TestOnlyProcStarts(t *testing.T) {
 		for _, imp := range f.Imports {
 			p, _ := strconv.Unquote(imp.Path.Value)
 			fns := map[string]map[string]bool{
-				"os/exec": {"Command": true, "CommandContext": true},
-				"os":      {"StartProcess": true},
-				"syscall": {"StartProcess": true, "ForkExec": true},
+				"os/exec":                  {"Command": true, "CommandContext": true},
+				"os":                       {"StartProcess": true},
+				"syscall":                  {"StartProcess": true, "ForkExec": true, "CreateProcess": true},
+				"golang.org/x/sys/windows": {"CreateProcess": true, "CreateProcessAsUser": true},
 			}[p]
 			if fns == nil {
+				continue
+			}
+			if imp.Name != nil && imp.Name.Name == "." {
+				problems = append(problems, rel+": dot-imports "+p)
 				continue
 			}
 			name := p[strings.LastIndex(p, "/")+1:]
