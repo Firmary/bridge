@@ -80,6 +80,14 @@
       }
     },
     {
+      "name": "sign-in code pasted in Firmary",
+      "document": {
+        "type": "signin_code",
+        "provider": "claude-code",
+        "code": "Zk3pQ8vT2mW9xL4nR7sB1cY6hJ0dF5gA-_.~#S7tUvW8xY9zA0bC1dE2f"
+      }
+    },
+    {
       "name": "sign out",
       "document": {
         "type": "signout",
@@ -174,6 +182,15 @@
       "document": {
         "type": "signin",
         "provider": "gemini-cli"
+      }
+    },
+    {
+      "name": "sign-in code without its state",
+      "path": "/code",
+      "document": {
+        "type": "signin_code",
+        "provider": "claude-code",
+        "code": "Zk3pQ8vT2mW9xL4nR7sB1cY6hJ0dF5gA"
       }
     },
     {

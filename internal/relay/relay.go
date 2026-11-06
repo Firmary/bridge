@@ -76,6 +76,9 @@ type Config struct {
 	// SignIn runs a provider sign-in the relay asked for (signin), on its own goroutine, calling step with the
 	// provider's link (and code) for Firmary to show. Nil ignores signin.
 	SignIn func(ctx context.Context, rec pairing.Record, provider string, step func(protocol.SigninStep))
+	// SignInCode hands the code the person pasted in Firmary (signin_code) to the paste_code sign-in running for that
+	// provider under rec. Nil ignores signin_code.
+	SignInCode func(rec pairing.Record, provider, code string)
 	// Refresh, if set, makes the Link send a fresh hello on the live connection, for example after a provider
 	// sign-in, when no turn is running.
 	Refresh    <-chan struct{}
@@ -483,6 +486,13 @@ func (c *Client) session(ctx context.Context, attempt int) (err error) {
 				s.Type, s.Provider = protocol.TypeSigninStep, m.Provider
 				_ = cn.send(s)
 			})
+		case protocol.TypeSigninCode:
+			m, err := protocol.Decode[protocol.SigninCode](b)
+			if err != nil || c.cfg.SignInCode == nil || !protocol.ValidSigninCode(m.Code) {
+				c.cfg.Log.Log(logx.UnknownMessage, logx.Fields{Reason: typ})
+				continue
+			}
+			c.cfg.SignInCode(rec, m.Provider, m.Code)
 		case protocol.TypeTurn:
 			t, err := protocol.Decode[protocol.Turn](b)
 			if err != nil {

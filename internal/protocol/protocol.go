@@ -46,6 +46,7 @@ const (
 	TypeRevoke         = "revoke"
 	TypeError          = "error"
 	TypeSignin         = "signin"
+	TypeSigninCode     = "signin_code"
 	// Helper -> relay.
 	TypeAuth           = "auth"
 	TypePairingReveal  = "pairing_reveal"
@@ -253,12 +254,28 @@ type Signin struct {
 	Provider string `json:"provider"`
 }
 
+// SigninCode carries the code the provider's page showed after Authorize, as the person pasted it into Firmary, to
+// the paste_code sign-in running for that provider. Never logged.
+type SigninCode struct {
+	Type     string `json:"type"`
+	Provider string `json:"provider"`
+	Code     string `json:"code"`
+}
+
+var signinCodeShape = regexp.MustCompile(`^[A-Za-z0-9._~-]{8,512}#[A-Za-z0-9._~-]{8,512}$`)
+
+// ValidSigninCode reports whether code has the shape of the code the provider's page shows (Claude Code's
+// <code>#<state>), the same check as the relay schema's. Anything else, a newline above all, never reaches the
+// provider's sign-in.
+func ValidSigninCode(code string) bool { return signinCodeShape.MatchString(code) }
+
 // SigninStep is the provider's own sign-in link and, for a device link, its one-time code, which Firmary shows the
-// person. Never logged.
+// person. With paste_code, Firmary then asks the person for the code the provider's page shows and sends it back as
+// SigninCode. Never logged.
 type SigninStep struct {
 	Type     string `json:"type"`
 	Provider string `json:"provider"`
-	Kind     string `json:"kind"` // "browser" or "device_link"
+	Kind     string `json:"kind"` // "browser", "device_link" or "paste_code"
 	URL      string `json:"url,omitempty"`
 	UserCode string `json:"userCode,omitempty"`
 }

@@ -110,6 +110,15 @@
       }
     },
     {
+      "name": "paste-code sign-in step",
+      "document": {
+        "type": "signin_step",
+        "provider": "claude-code",
+        "kind": "paste_code",
+        "url": "https://claude.com/cai/oauth/authorize?code=true&response_type=code&state=S7tUvW8xY9zA0bC1dE2f"
+      }
+    },
+    {
       "name": "pairing accepted on the computer",
       "document": {
         "type": "pairing_accept",

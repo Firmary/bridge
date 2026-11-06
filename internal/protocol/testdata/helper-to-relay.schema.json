@@ -558,7 +558,8 @@
           "type": "string",
           "enum": [
             "browser",
-            "device_link"
+            "device_link",
+            "paste_code"
           ]
         },
         "url": {

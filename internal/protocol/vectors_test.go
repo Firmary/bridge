@@ -171,7 +171,7 @@ func TestSharedFixturesRoundTrip(t *testing.T) {
 		TypePairingReveal: roundTrip[PairingReveal], TypeHello: roundTrip[Hello], TypeEvent: roundTrip[EventMsg],
 		TypePairingOffer: roundTrip[PairingOffer], TypePairingAccept: roundTrip[PairingAnswer],
 		TypePairingDecline: roundTrip[PairingAnswer], TypePairingClaimed: roundTrip[PairingClaimed],
-		TypeSignin: roundTrip[Signin], TypeSigninStep: roundTrip[SigninStep],
+		TypeSignin: roundTrip[Signin], TypeSigninStep: roundTrip[SigninStep], TypeSigninCode: roundTrip[SigninCode],
 	}
 	// Messages the Link doesn't implement yet.
 	notYet := map[string]bool{"signout": true}

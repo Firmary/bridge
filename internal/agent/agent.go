@@ -422,6 +422,8 @@ type pendingSignIn struct {
 	cancel context.CancelFunc
 	send   func(protocol.SigninStep)
 	last   *protocol.SigninStep
+	// codes takes the code the person pasted in Firmary, for a paste_code sign-in.
+	codes chan string
 }
 
 // cancelSignIns stops every provider sign-in still running: they belong to a pairing that just ended, and their link
@@ -437,8 +439,8 @@ func (a *Agent) cancelSignIns() {
 
 // relaySignIn runs the provider sign-in Firmary asked for over the relay, in the paired person's profile, and passes
 // the provider's link (and code) to Firmary. The desktop app opens the browser here; a server uses the provider's
-// device link, opened on any browser. Claude Code has no device link (its server sign-in needs the code Anthropic's
-// page shows pasted back here, which the relay can't carry yet), so a server refuses that one.
+// device link, opened on any browser. Claude Code has no device link: on a server Firmary shows its link, and the
+// code Anthropic's page shows after Authorize comes back from Firmary (signin_code, relaySignInCode).
 func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider string, step func(protocol.SigninStep), done func()) {
 	var p ProviderInfo
 	for _, q := range Providers {
@@ -454,7 +456,7 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 	kind := driver.SignInBrowser
 	if a.Opts.Kind == protocol.KindServer {
 		kind = d.Kinds()[1]
-		if kind != driver.SignInDeviceLink {
+		if kind != driver.SignInDeviceLink && kind != driver.SignInPasteCode {
 			a.Log.Log(logx.ProviderSignIn, logx.Fields{Provider: p.ID, Reason: "relay_no_device_link"})
 			return
 		}
@@ -481,7 +483,7 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 		return
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	s := &pendingSignIn{rec: rec, cancel: cancel, send: step}
+	s := &pendingSignIn{rec: rec, cancel: cancel, send: step, codes: make(chan string, 1)}
 	a.signingIn[p.ID] = s
 	a.mu.Unlock()
 	defer func() {
@@ -500,14 +502,25 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 		a.Log.Log(logx.ProviderSignIn, logx.Fields{Provider: p.ID, Reason: "ensure_failed"})
 		return
 	}
-	err := d.SignIn(ctx, helper.Profile(a.EnvDir, rec, p.ID), kind, driver.SignInUI{Step: func(st driver.SignInStep) {
+	ui := driver.SignInUI{Step: func(st driver.SignInStep) {
 		ps := protocol.SigninStep{Kind: st.Kind, URL: st.URL, UserCode: st.UserCode}
 		a.mu.Lock()
 		s.last = &ps
 		send := s.send
 		a.mu.Unlock()
 		send(ps)
-	}})
+	}}
+	if kind == driver.SignInPasteCode {
+		ui.Code = func(ctx context.Context) (string, error) {
+			select {
+			case code := <-s.codes:
+				return code, nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+	}
+	err := d.SignIn(ctx, helper.Profile(a.EnvDir, rec, p.ID), kind, ui)
 	f := logx.Fields{Provider: p.ID, Reason: "relay_ok"}
 	var fail *driver.Failure
 	if errors.As(err, &fail) {
@@ -516,6 +529,23 @@ func (a *Agent) relaySignIn(ctx context.Context, rec pairing.Record, provider st
 		f.Reason = "relay_failed"
 	}
 	a.Log.Log(logx.ProviderSignIn, f)
+}
+
+// relaySignInCode hands the code the person pasted in Firmary to the paste_code sign-in running for provider, if that
+// sign-in belongs to this same pairing. A code for no such sign-in, or arriving while an earlier one waits to be read,
+// is dropped: Firmary shows the person where the sign-in stands, and they can paste again.
+func (a *Agent) relaySignInCode(rec pairing.Record, provider, code string) {
+	a.mu.Lock()
+	s := a.signingIn[provider]
+	a.mu.Unlock()
+	if s == nil || s.rec != rec || s.codes == nil {
+		a.Log.Log(logx.ProviderSignIn, logx.Fields{Provider: provider, Reason: "code_without_signin"})
+		return
+	}
+	select {
+	case s.codes <- code:
+	default:
+	}
 }
 
 // Run keeps the relay connection up and the updater running until ctx ends.
@@ -540,6 +570,7 @@ func (a *Agent) Run(ctx context.Context, h Hooks) error {
 		SignIn: func(ctx context.Context, rec pairing.Record, provider string, step func(protocol.SigninStep)) {
 			a.relaySignIn(ctx, rec, provider, step, h.ProvidersChanged)
 		},
+		SignInCode: a.relaySignInCode,
 		ShowPaired: func(person, firm string) {
 			a.SaveNames(Names{Person: person, Firm: firm})
 			if h.Paired != nil {

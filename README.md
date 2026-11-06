@@ -19,11 +19,12 @@ what they show is Firmary Bridge.
 
 ## Status
 
-**Beta, unsigned.** Version 0.3.2 (the Firmary Bridge name) is the latest GitHub release; 0.3.1 made Enter pairing
-code… open the code box on Windows, 0.3.0 brought pairing v2 (Firmary shows the code, the person types it into the
-app) and 0.2.0 was the first Firmary Link release. It is not signed by Apple or Microsoft yet: macOS Gatekeeper and
-Windows SmartScreen warn the first time it opens. A signed build is coming. Installed copies update themselves from
-the release's signed update manifest.
+**Beta, unsigned.** Version 0.3.3 is the latest GitHub release: it signs a server in to Claude from Firmary, with the
+code Anthropic's page shows pasted into Firmary. 0.3.2 brought the Firmary Bridge name; 0.3.1 made Enter pairing code…
+open the code box on Windows, 0.3.0 brought pairing v2 (Firmary shows the code, the person types it into the app) and
+0.2.0 was the first Firmary Link release. It is not signed by Apple or Microsoft yet: macOS Gatekeeper and Windows
+SmartScreen warn the first time it opens. A signed build is coming. Installed copies update themselves from the
+release's signed update manifest.
 
 ## Download
 
@@ -130,9 +131,10 @@ GitHub-hosted runners only); a weekly run re-signs the latest manifest with a fr
   logged, omitted when unknown) and `pinnedVersion`, and is sent again after a sign-in or sign-out.
 - **Sign-in from Firmary.** On the relay's `signin`, the Link runs that provider's sign-in in the paired person's
   profile and sends `signin_step` with the link (and code) for Firmary to show: the browser on a desktop, the
-  device link on a server (Codex). Claude Code has no device link; its server sign-in is
-  `firmary-link sign-in claude --device` on the server, until the relay can carry back the code Anthropic's page
-  shows.
+  device link on a server (Codex). Claude Code has no device link: on a server the Link sends `paste_code` with
+  Anthropic's sign-in link, Firmary asks the person for the code the page shows after Authorize, and the relay's
+  `signin_code` brings it back to that same sign-in (since 0.3.3). A code of any other shape is dropped.
+  `firmary-link sign-in claude --device` on the server still works.
 - **Silent self-update.** At start and every few hours, between turns only, the Link reads the signed
   `manifest.json` (firmary-os `UpdateManifest`, detached Ed25519 signature, checked against two pinned update keys,
   current and next). A tampered, foreign-key, replayed or expired manifest is refused. A newer Link in this device's
