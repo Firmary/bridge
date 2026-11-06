@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -55,10 +56,12 @@ func newRig(t *testing.T, version string) *rig {
 		w.Write(b)
 	}))
 	t.Cleanup(g.srv.Close)
+	// Every request, whatever its host (the manifest names github.com), goes to the test server.
+	client := &http.Client{Transport: toServer{g.srv}}
 	devKey := make([]byte, 32)
 	g.u = &Updater{
 		Dir: t.TempDir(), Version: version, Platform: "linux-x64", ManifestURL: g.srv.URL + "/manifest.json",
-		Keys: []ed25519.PublicKey{pub}, HTTP: g.srv.Client(), Gate: &gate{},
+		Keys: []ed25519.PublicKey{pub}, HTTP: client, Gate: &gate{},
 		DeviceKey: func() []byte { return devKey },
 		SelfTest:  func(ctx context.Context, path, v string) error { return g.selfTest },
 		Restart:   func(path string) error { g.restarted = path; return errors.New("test: no restart") },
@@ -73,6 +76,31 @@ func newRig(t *testing.T, version string) *rig {
 	return g
 }
 
+// toServer sends every request to srv, keeping its path.
+type toServer struct{ srv *httptest.Server }
+
+func (s toServer) RoundTrip(r *http.Request) (*http.Response, error) {
+	u, _ := url.Parse(s.srv.URL)
+	r = r.Clone(r.Context())
+	r.URL.Scheme, r.URL.Host, r.Host = u.Scheme, u.Host, u.Host
+	return s.srv.Client().Transport.RoundTrip(r)
+}
+
+// exeURL is where the manifest says version's linux-x64 executable downloads from.
+func exeURL(version string) string { return DownloadURL(version, "firmary-link-linux-x64") }
+
+// exePath is exeURL's path on the test server.
+func exePath(version string) string { u, _ := url.Parse(exeURL(version)); return u.Path }
+
+// privateDir is a temporary directory only its owner can write, as the launcher requires whatever the umask.
+func privateDir(t *testing.T) string {
+	d := t.TempDir()
+	if err := os.Chmod(d, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
 func hexOf(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
@@ -80,21 +108,17 @@ func hexOf(s string) string {
 
 // manifest returns a valid manifest offering version with the given executable, sequence seq.
 func (g *rig) manifest(seq int64, version string, exe []byte) Manifest {
-	g.files["/firmary-link-"+version] = exe
+	g.files[exePath(version)] = exe
 	return Manifest{Schema: 1, Sequence: seq, Expires: time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
 		Helper: HelperRelease{Version: version, RolloutPercent: 100, Platforms: map[string]HelperArtifact{
-			"linux-x64": {URL: "https://example.invalid/firmary-link-" + version, SHA256: hexOf(string(exe))},
+			"linux-x64": {URL: exeURL(version), SHA256: hexOf(string(exe))},
 		}},
 		MinHelperVersion: "0.2.0", Providers: map[string]*ProviderRelease{}, DisabledAdapters: []string{},
 		WhatsNew: []WhatsNew{}}
 }
 
-// publish signs m with key (the rig's own by default), serving artifacts from the test server.
+// publish signs m with key (the rig's own by default) and serves it from the test server.
 func (g *rig) publish(m Manifest, key ed25519.PrivateKey) ([]byte, []byte) {
-	for k, a := range m.Helper.Platforms {
-		a.URL = g.srv.URL + "/firmary-link-" + m.Helper.Version
-		m.Helper.Platforms[k] = a
-	}
 	body, _ := json.Marshal(m)
 	if key == nil {
 		key = g.priv
@@ -166,6 +190,33 @@ func TestRefusesTamperedReplayedExpiredAndForeignManifests(t *testing.T) {
 	}
 }
 
+// TestDownloadsOnlyFromTheVersionsOwnRelease: a validly signed manifest whose Link download is anywhere but the Bridge
+// release of its own version is refused before anything is fetched.
+func TestDownloadsOnlyFromTheVersionsOwnRelease(t *testing.T) {
+	for _, u := range []string{
+		"https://evil.example/firmary-link-linux-x64",
+		"https://github.com/Evil/bridge/releases/download/v0.2.1/firmary-link-linux-x64",
+		"https://github.com/Firmary/bridge/releases/download/v0.2.0/firmary-link-linux-x64",
+		"https://github.com/Firmary/bridge/releases/download/v0.2.1/../v0.2.0/firmary-link-linux-x64",
+		"https://github.com/Firmary/bridge/releases/download/v0.2.1/sub/firmary-link-linux-x64",
+		"https://github.com/Firmary/bridge/releases/download/v0.2.1/firmary-link-linux-x64?x=1",
+		"https://github.com/Firmary/bridge/releases/download/v0.2.1/",
+		"https://github.com.evil.example/Firmary/bridge/releases/download/v0.2.1/firmary-link-linux-x64",
+		"http://github.com/Firmary/bridge/releases/download/v0.2.1/firmary-link-linux-x64",
+	} {
+		g := newRig(t, "0.2.0")
+		m := g.manifest(1, "0.2.1", []byte("v0.2.1"))
+		m.Helper.Platforms["linux-x64"] = HelperArtifact{URL: u, SHA256: hexOf("v0.2.1")}
+		if err := g.apply(m); !errors.Is(err, ErrMalformed) || g.restarted != "" {
+			t.Errorf("%s: err %v, restarted %q", u, err, g.restarted)
+		}
+	}
+	g := newRig(t, "0.2.0")
+	if g.apply(g.manifest(1, "0.2.1", []byte("v0.2.1"))); g.restarted != Binary(g.u.Dir, "0.2.1") {
+		t.Fatalf("the release's own download wasn't installed: restarted %q", g.restarted)
+	}
+}
+
 // TestUpdateSwitchesBetweenTurnsAfterSelfTest: a newer version in the rollout is downloaded, checked, self-tested
 // and switched to only when no turn runs; a download that doesn't match its checksum, or a version that fails its
 // self-test, never is.
@@ -176,7 +227,7 @@ func TestUpdateSwitchesBetweenTurnsAfterSelfTest(t *testing.T) {
 	// Wrong bytes served for the version: refused.
 	m := g.manifest(1, "0.2.1", []byte("genuine"))
 	g.publish(m, nil)
-	g.files["/firmary-link-0.2.1"] = []byte("evil")
+	g.files[exePath("0.2.1")] = []byte("evil")
 	if err := g.u.CheckOnce(ctx); err == nil || g.restarted != "" {
 		t.Fatalf("checksum mismatch: err %v restarted %q", err, g.restarted)
 	}
@@ -255,7 +306,7 @@ func TestRolloutAndMinimumVersion(t *testing.T) {
 // TestLauncherRollsBack: the launcher runs the new version, and goes back to the previous one when it keeps failing
 // to start or its executable changed on disk. A committed version stays.
 func TestLauncherRollsBack(t *testing.T) {
-	dir := t.TempDir()
+	dir := privateDir(t)
 	write := func(v, body string) string {
 		p := Binary(dir, v)
 		os.MkdirAll(filepath.Dir(p), 0o700)
@@ -302,6 +353,36 @@ func TestLauncherRollsBack(t *testing.T) {
 	SaveState(dir, State{Current: "0.2.1", CurrentSHA256: sum1})
 	if got := Choose(dir, "0.3.0"); got != "" {
 		t.Fatalf("older update chosen over a newer install: %q", got)
+	}
+}
+
+// TestLauncherRunsOnlyPrivateVersions: a version is started only when the data directory, the update directory, the
+// version's directory and its executable can't be written by anyone else; otherwise the installed one runs.
+func TestLauncherRunsOnlyPrivateVersions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fsperm.CheckOwned is not implemented on Windows")
+	}
+	data := privateDir(t)
+	dir := filepath.Join(data, "update")
+	p := Binary(dir, "0.2.1")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(p, []byte("one"), 0o700)
+	SaveState(dir, State{Current: "0.2.1", CurrentSHA256: hexOf("one")})
+	if got := Choose(dir, "0.2.0"); got != p {
+		t.Fatalf("private version not chosen: %q", got)
+	}
+	for _, open := range []string{data, dir, filepath.Join(dir, "versions"), filepath.Dir(p), p} {
+		mode := os.FileMode(0o700)
+		os.Chmod(open, 0o777)
+		if got := Choose(dir, "0.2.0"); got != "" {
+			t.Errorf("%s writable by others, still launched %q", open, got)
+		}
+		os.Chmod(open, mode)
+	}
+	if got := Choose(dir, "0.2.0"); got != p {
+		t.Fatalf("not chosen again once private: %q", got)
 	}
 }
 

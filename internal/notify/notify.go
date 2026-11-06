@@ -6,6 +6,7 @@ package notify
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 )
 
@@ -14,9 +15,21 @@ func applescript(s string) string {
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\r", " ", "\n", `\n`).Replace(s) + `"`
 }
 
-// powershell quotes s as a PowerShell single-quoted string.
-func powershell(s string) string {
-	return "'" + strings.ReplaceAll(strings.NewReplacer("\r", " ", "\n", " ").Replace(s), "'", "''") + "'"
+// toastScript is the PowerShell that raises a Windows toast with title and body. The toast's XML goes in as base64,
+// so no text (a firm or device name from the relay) is ever part of the script's source: PowerShell treats the
+// typographic quotes U+2018 to U+201B as quotes too, which no single-quote escaping covers.
+func toastScript(title, body string) string {
+	xml := "<toast><visual><binding template='ToastGeneric'><text>" + xmlEscape(title) + "</text><text>" +
+		xmlEscape(body) + "</text></binding></visual></toast>"
+	return strings.Join([]string{
+		"[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null",
+		"[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null",
+		"$x = New-Object Windows.Data.Xml.Dom.XmlDocument",
+		"$x.LoadXml([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" + base64.StdEncoding.EncodeToString([]byte(xml)) + "')))",
+		"$t = [Windows.UI.Notifications.ToastNotification]::new($x)",
+		// PowerShell's own app id, which Windows lets show toasts without registering one.
+		"[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show($t)",
+	}, "\n")
 }
 
 // xmlEscape escapes s for a toast's XML.

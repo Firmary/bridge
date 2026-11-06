@@ -11,6 +11,10 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -75,12 +79,15 @@ const (
 	ReasonMissingClaims Reason = "ticket_missing_claims"
 	ReasonReplayed      Reason = "ticket_replayed"
 	ReasonPredatesStart Reason = "ticket_predates_start"
+	ReasonUnrecorded    Reason = "ticket_unrecorded"
 )
 
 // Verifier checks tickets against pinned public keys and remembers used ticket ids.
 //
-// Used ids are kept in memory only. So that a restart can't make a used ticket valid again, a ticket issued before
-// the second the Verifier was created (process start) is refused; the server re-issues it.
+// So that a restart can't make a used ticket valid again, a ticket issued before the second the Verifier was created
+// (process start) is refused; the server re-issues it. That alone still lets through a ticket issued up to ClockSkew
+// ahead of this computer's clock, used, and presented again after a quick restart, so with Remember the used ids are
+// also kept on disk.
 type Verifier struct {
 	keys    []ed25519.PublicKey
 	now     func() time.Time
@@ -88,6 +95,7 @@ type Verifier struct {
 
 	mu   sync.Mutex
 	seen map[string]time.Time
+	path string // where used ids are kept across restarts, if set
 }
 
 // NewVerifier pins keys (current and next). With no keys every ticket is refused.
@@ -96,6 +104,52 @@ func NewVerifier(keys []ed25519.PublicKey, now func() time.Time) *Verifier {
 		now = time.Now
 	}
 	return &Verifier{keys: keys, now: now, started: now().Unix(), seen: map[string]time.Time{}}
+}
+
+// Remember keeps used ticket ids in path as well as in memory, and takes in the ones a previous process left there.
+// If path exists but can't be read, every ticket that process could have used (issued before this start plus
+// ClockSkew) is refused instead.
+func (v *Verifier) Remember(path string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.path = path
+	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return
+	}
+	var used map[string]int64
+	if err != nil || json.Unmarshal(b, &used) != nil {
+		v.started = v.now().Add(ClockSkew).Unix()
+		return
+	}
+	for id, at := range used {
+		v.seen[id] = time.Unix(at, 0)
+	}
+}
+
+// save replaces v.path with the used ids, atomically and readable only by the person. v.mu is held.
+func (v *Verifier) save() error {
+	used := make(map[string]int64, len(v.seen))
+	for id, t := range v.seen {
+		used[id] = t.Unix()
+	}
+	b, err := json.Marshal(used)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(v.path), ".used-tickets-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), v.path)
 }
 
 var b64 = base64.RawURLEncoding
@@ -188,6 +242,10 @@ func (v *Verifier) Verify(token string) (Claims, error) {
 		return Claims{}, ReasonReplayed
 	}
 	v.seen[c.TicketID] = now
+	// A ticket whose use couldn't be recorded isn't run: after a restart it would be usable again.
+	if v.path != "" && v.save() != nil {
+		return Claims{}, ReasonUnrecorded
+	}
 	return c, nil
 }
 
