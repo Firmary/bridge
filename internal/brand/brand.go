@@ -9,8 +9,9 @@ package brand
 // Name is the product name in every message the app shows a person.
 const Name = "Firmary Bridge"
 
-// Command is the executable's name (cmd/firmary-link), and the Linux data directory, package and service unit name.
-// It kept the Firmary Link name so installed copies, their services and scripts keep working.
+// Command is the executable's name (cmd/firmary-link), and the Linux data directory and service unit name. It kept
+// the Firmary Link name so installed copies, their services and scripts keep working. (The Linux package moved to
+// firmary-bridge in 0.3.5; see packaging/linux/build-deb.sh.)
 const Command = "firmary-link"
 
 // BundleID is the macOS bundle identifier and launchd label.
