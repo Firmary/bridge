@@ -20,13 +20,15 @@ what they show is Firmary Bridge.
 
 ## Status
 
-**Beta, unsigned.** Version 0.3.4 is the latest GitHub release: the first connection after pairing no longer drops
-while a provider's status check is slow, and a Claude sign-in started from Firmary finishes with the code Claude's
-page shows, pasted into Firmary. 0.3.3 made the server line work on any Linux, systemd or not, and keep running after
-pairing. 0.3.2 brought the Firmary Bridge name; 0.3.1 made Enter pairing
-code… open the code box on Windows, 0.3.0 brought pairing v2 (Firmary shows the code, the person types it into the
-app) and 0.2.0 was the first Firmary Link release. It is not signed by Apple or Microsoft yet: macOS Gatekeeper and
-Windows SmartScreen warn the first time it opens. A signed build is coming. Installed copies update themselves from
+**Beta, unsigned.** Version 0.3.5 is the latest GitHub release: the Linux desktop package is named `firmary-bridge`,
+Windows no longer flashes console windows during status checks, and updates only accept downloads from their own
+release and re-sign a manifest only after checking its signature. 0.3.4 kept the first connection after pairing from
+dropping while a provider's status check is slow, and let a Claude sign-in started from Firmary finish with the code
+Claude's page shows, pasted into Firmary. 0.3.3 made the server line work on any Linux, systemd or not, and keep
+running after pairing. 0.3.2 brought the Firmary Bridge name; 0.3.1 made Enter pairing code… open the code box on
+Windows, 0.3.0 brought pairing v2 (Firmary shows the code, the person types it into the app) and 0.2.0 was the first
+Firmary Link release. It is not signed by Apple or Microsoft yet: macOS Gatekeeper and Windows SmartScreen warn the
+first time it opens. A signed build is coming. Installed copies update themselves from
 the release's signed update manifest.
 
 ## Download

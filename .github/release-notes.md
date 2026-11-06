@@ -1,10 +1,14 @@
 **Beta and unsigned.** Firmary Bridge connects your own Claude or ChatGPT plan to Firmary. This build isn't signed by
 Apple or Microsoft yet, so your computer warns the first time you open it. A signed build is coming.
 
-**New in 0.3.3:** the server line works on any 64-bit Linux, with or without systemd: Docker containers, WSL and
-small VPS images too. Where systemd doesn't run, Firmary Bridge pairs and then keeps running in the background, starts
-again if it stops, and starts with the server when cron is there. After pairing, the line sends you back to Firmary
-for the next step instead of printing more commands.
+**New in 0.3.5:** the Linux desktop package is now called `firmary-bridge` (`firmary-bridge_amd64.deb`, or
+`_arm64.deb` for Arm), and installing it replaces an installed `firmary-link` package in place. On Windows, Firmary
+Bridge no longer flashes console windows while it checks your Claude or ChatGPT sign-in. Updates are safer too: a
+copy only accepts downloads from this repo's own release of that version, and an update manifest is re-signed only
+after its existing signature checks out.
+
+**0.3.4** kept the first connection after pairing from dropping, and let a Claude sign-in started from Firmary finish
+with the code pasted into Firmary. **0.3.3** made the server line work on any 64-bit Linux, with or without systemd.
 
 **0.3.2** renamed Firmary Link to **Firmary Bridge**. A computer that already has it updates by itself and stays
 paired, signed in and set to open at login. On a server, the command is still `firmary-link`.
