@@ -199,6 +199,35 @@ func (d *Driver) launchSettings(p driver.Profile, l launch.Profile) (args, fileO
 	return append(args, d.extraConfig...), fileOnly
 }
 
+// FirmaryTokenEnv is the variable that carries the turn's Firmary MCP access token, set only in the environment of
+// that turn's Codex (bearer_token_env_var), never on its command line or in its config.
+const FirmaryTokenEnv = "FIRMARY_MCP_TOKEN"
+
+// firmaryServer is the name of Firmary's MCP server in config.toml, and the server name its exec items carry.
+const firmaryServer = "firmary"
+
+// firmarySettings are the config.toml settings for Firmary's own MCP server when the turn's profile turns the firmary
+// tool on, else none. Keys are from config.schema.json at rust-v0.166.0 (RawMcpServerConfig). They are for
+// config.toml only: the endpoint is the server's string, so it never goes on the command line.
+//   - url and bearer_token_env_var: Streamable HTTP with "Authorization: Bearer $FIRMARY_MCP_TOKEN".
+//   - default_tools_approval_mode="approve": under approval_policy="never", a tool that isn't annotated read-only
+//     would otherwise ask for approval and be refused ("MCP tool call requires approval, but approval policy is
+//     never", core/src/mcp_tool_call.rs). Firmary asks the person itself for anything that needs approval.
+//   - required=true: Codex waits for the server before the first model request instead of leaving its tools out
+//     after the default 1-second grace for optional servers, and fails the turn if it can't connect.
+func firmarySettings(f *launch.Firmary) []string {
+	if f == nil {
+		return nil
+	}
+	const k = "mcp_servers." + firmaryServer + "."
+	return []string{
+		k + `url=` + tomlString(f.URL),
+		k + `bearer_token_env_var=` + tomlString(FirmaryTokenEnv),
+		k + `default_tools_approval_mode="approve"`,
+		k + `required=true`,
+	}
+}
+
 // systemPromptText is the turn's system prompt: the launch profile's, else Firmary's built-in default for the
 // profile's tools.
 func systemPromptText(l launch.Profile) string {
@@ -208,10 +237,10 @@ func systemPromptText(l launch.Profile) string {
 	return prompt.Fallback(l.HasTool(launch.ToolWebSearch))
 }
 
-// prepare creates the profile and rewrites its config.toml and Firmary's system prompt file for the launch profile,
-// so a change made by Codex or anyone else doesn't survive to the next run. Global instruction files in CODEX_HOME
-// are removed: Codex sends them with every turn.
-func (d *Driver) prepare(p driver.Profile, l launch.Profile) error {
+// prepare creates the profile and rewrites its config.toml and Firmary's system prompt file for the launch profile
+// and the turn's Firmary credential (nil for none), so a change made by Codex or anyone else doesn't survive to the
+// next run. Global instruction files in CODEX_HOME are removed: Codex sends them with every turn.
+func (d *Driver) prepare(p driver.Profile, l launch.Profile, fm *launch.Firmary) error {
 	if err := makeDirs(p); err != nil {
 		return err
 	}
@@ -224,6 +253,7 @@ func (d *Driver) prepare(p driver.Profile, l launch.Profile) error {
 		return err
 	}
 	args, fileOnly := d.launchSettings(p, l)
+	fileOnly = append(fileOnly, firmarySettings(fm)...)
 	return driver.WriteFileAtomic(filepath.Join(codexHome(p), "config.toml"), []byte(configTOML(append(args, fileOnly...))))
 }
 
@@ -246,7 +276,7 @@ func (d *Driver) prepareIdle(p driver.Profile) error {
 		return makeDirs(p)
 	}
 	defer m.Unlock()
-	return d.prepare(p, launch.Profile{})
+	return d.prepare(p, launch.Profile{}, nil)
 }
 
 // command builds a Codex invocation in the profile: Link settings both in config.toml and as -c session flags

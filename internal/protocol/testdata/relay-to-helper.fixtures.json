@@ -130,6 +130,21 @@
         "firmName": "Harlow & Pike CPA",
         "personName": "Maria Okafor"
       }
+    },
+    {
+      "name": "turn with Firmary tools (P17)",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVyLWV4YW1wbGU.cGF5bG9hZC1leGFtcGxl.c2lnbmF0dXJlLWV4YW1wbGU",
+        "context": "",
+        "prompt": "Which clients have overdue requests?",
+        "profile": "{\"schema\":1,\"tools\":[\"firmary\"],\"maxTurns\":10}",
+        "firmary": {
+          "url": "https://firmary.app/api/mcp",
+          "accessToken": "fmcp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      }
     }
   ],
   "invalid": [
@@ -388,6 +403,38 @@
         "firmName": "Harlow & Pike CPA"
       },
       "path": "/personName"
+    },
+    {
+      "name": "Firmary tools at another path",
+      "path": "/firmary/url",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVyLWV4YW1wbGU.cGF5bG9hZC1leGFtcGxl.c2lnbmF0dXJlLWV4YW1wbGU",
+        "context": "",
+        "prompt": "Which clients have overdue requests?",
+        "profile": "{\"schema\":1,\"tools\":[\"firmary\"],\"maxTurns\":10}",
+        "firmary": {
+          "url": "https://firmary.app/mcp",
+          "accessToken": "fmcp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      }
+    },
+    {
+      "name": "Firmary tools with a token that isn't an MCP access token",
+      "path": "/firmary/accessToken",
+      "document": {
+        "type": "turn",
+        "turnId": "0b9a6f3e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+        "ticket": "aGVhZGVyLWV4YW1wbGU.cGF5bG9hZC1leGFtcGxl.c2lnbmF0dXJlLWV4YW1wbGU",
+        "context": "",
+        "prompt": "Which clients have overdue requests?",
+        "profile": "{\"schema\":1,\"tools\":[\"firmary\"],\"maxTurns\":10}",
+        "firmary": {
+          "url": "https://firmary.app/api/mcp",
+          "accessToken": "fmrt_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        }
+      }
     }
   ]
 }
