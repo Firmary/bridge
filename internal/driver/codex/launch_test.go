@@ -87,6 +87,15 @@ func TestNoServerStringOnCommandLine(t *testing.T) {
 		own[s] = true
 	}
 	for _, name := range launch.Tools {
+		if name == launch.ToolFirmary {
+			// Its settings carry the server's endpoint, so they are in config.toml only (TestFirmarySettings).
+			for _, s := range firmarySettings(&launch.Firmary{}) {
+				if fixed[key(s)] {
+					t.Errorf("Firmary setting %s repeats a fixed key", s)
+				}
+			}
+			continue
+		}
 		ss, ok := toolSettings[name]
 		if !ok || len(ss) == 0 {
 			t.Errorf("catalog tool %s maps to %v", name, ss)
