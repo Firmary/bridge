@@ -4,6 +4,7 @@ package codex
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -354,5 +355,81 @@ func TestLossyMappings(t *testing.T) {
 		if got := settings(doc); !slices.Equal(got, base) {
 			t.Errorf("%s changed the Codex settings: %q", doc, got)
 		}
+	}
+}
+
+// TestRunWithFirmaryTools: with the firmary tool on, config.toml names Firmary's MCP server with its bearer token
+// variable, tools that run without Codex's own approval and a required start; the token is only in that Codex's
+// environment, and neither it nor the endpoint is on the command line. Without the tool there is no MCP server and no
+// token variable, and a credential without the tool (or the tool without one) refuses the turn.
+func TestRunWithFirmaryTools(t *testing.T) {
+	d, dump := installFake(t, []string{"PATH=/usr/bin:/bin", FirmaryTokenEnv + "=inherited-must-not-pass"})
+	prof := driver.Profile{UserID: "u1", Dir: filepath.Join(t.TempDir(), "u1")}
+	os.MkdirAll(filepath.Join(prof.Dir, "home"), 0o700)
+	os.WriteFile(filepath.Join(prof.Dir, "home", "auth.json"), []byte(testkit.CodexAuthJSON("business")), 0o600)
+	cred := &launch.Firmary{URL: "https://firmary.app/api/mcp", AccessToken: testkit.FirmaryToken}
+	run := func(profile string, f *launch.Firmary) error {
+		t.Helper()
+		l, err := launch.Parse(profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d.Run(context.Background(), prof, driver.Turn{ID: "t1", Model: "gpt-5.5", Prompt: testkit.PromptCanary,
+			MaxOutputTokens: 1000, Launch: l, Firmary: f}, func(protocol.StreamEvent) {})
+	}
+	read := func(name string) string { b, _ := os.ReadFile(name); return string(b) }
+
+	if err := run(`{"schema":1,"tools":["firmary"],"maxTurns":10}`, cred); err != nil {
+		t.Fatal(err)
+	}
+	args, env, cfg := read(filepath.Join(dump, "args")), read(filepath.Join(dump, "env")), read(filepath.Join(prof.Dir, "home", "config.toml"))
+	if strings.Contains(args, testkit.FirmaryToken) || strings.Contains(args, "firmary.app") || strings.Contains(args, "mcp_servers") {
+		t.Errorf("Firmary's settings reached the command line:\n%s", args)
+	}
+	if !strings.Contains(env, FirmaryTokenEnv+"="+testkit.FirmaryToken+"\n") || strings.Contains(env, "inherited-must-not-pass") {
+		t.Errorf("token variable in the environment:\n%s", env)
+	}
+	for _, want := range []string{`mcp_servers.firmary.url = "https://firmary.app/api/mcp"`,
+		`mcp_servers.firmary.bearer_token_env_var = "FIRMARY_MCP_TOKEN"`,
+		`mcp_servers.firmary.default_tools_approval_mode = "approve"`, `mcp_servers.firmary.required = true`,
+		`approval_policy = "never"`, `web_search = "disabled"`} {
+		if !strings.Contains(cfg, want+"\n") {
+			t.Errorf("config.toml has no %s:\n%s", want, cfg)
+		}
+	}
+	if strings.Contains(cfg, testkit.FirmaryToken) {
+		t.Error("the token was written to config.toml")
+	}
+
+	if err := run(`{"schema":1}`, nil); err != nil {
+		t.Fatal(err)
+	}
+	env, cfg = read(filepath.Join(dump, "env")), read(filepath.Join(prof.Dir, "home", "config.toml"))
+	if strings.Contains(env, FirmaryTokenEnv) || strings.Contains(cfg, "mcp_servers") {
+		t.Errorf("Firmary's server without the tool:\n%s\n%s", env, cfg)
+	}
+
+	var f *driver.Failure
+	for name, err := range map[string]error{
+		"tool without credential": run(`{"schema":1,"tools":["firmary"]}`, nil),
+		"credential without tool": run(`{"schema":1}`, cred),
+	} {
+		if !errors.As(err, &f) || f.Pattern != string(launch.ReasonFirmaryInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// TestFirmaryToolItems: a call to Firmary's MCP server is expected only when the profile turned its tools on; any
+// other MCP server's call still ends the turn.
+func TestFirmaryToolItems(t *testing.T) {
+	firmary := []byte(`{"type":"item.started","item":{"id":"m_1","type":"mcp_tool_call","server":"firmary","tool":"x","status":"in_progress"}}`)
+	other := []byte(`{"type":"item.started","item":{"id":"m_2","type":"mcp_tool_call","server":"other","tool":"x","status":"in_progress"}}`)
+	off, on, onOther := streamState{}, streamState{firmary: true}, streamState{firmary: true}
+	off.line(firmary)
+	on.line(firmary)
+	onOther.line(other)
+	if !off.toolUsed || on.toolUsed || !onOther.toolUsed {
+		t.Fatalf("off: %v, on: %v, other server: %v", off.toolUsed, on.toolUsed, onOther.toolUsed)
 	}
 }
