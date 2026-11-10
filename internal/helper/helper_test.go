@@ -372,7 +372,7 @@ func TestDroppedConnectionCancelsTurn(t *testing.T) {
 func TestLaunchProfile(t *testing.T) {
 	g := startRig(t, nil)
 	r, dev := g.r, g.dev
-	if l := g.hello.Launch; l == nil || !slices.Equal(l.ProfileSchemas, []int{1}) || !slices.Equal(l.Tools, []string{"web_search"}) ||
+	if l := g.hello.Launch; l == nil || !slices.Equal(l.ProfileSchemas, []int{1}) || !slices.Equal(l.Tools, []string{"web_search", "firmary"}) ||
 		!slices.Equal(l.ClaudeKnobs, []string{"replaceBuiltinInstructions"}) ||
 		!slices.Equal(l.CodexKnobs, []string{"reasoningSummary", "verbosity", "replaceBuiltinInstructions"}) {
 		t.Fatalf("hello launch %+v", g.hello.Launch)

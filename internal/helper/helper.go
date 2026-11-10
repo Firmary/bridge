@@ -42,7 +42,10 @@ type Helper struct {
 	DataDir   string
 	Version   string
 	Ring      string
-	Log       *logx.Logger
+	// Env is the Firmary environment ("prod", "dev" or "local"). It decides which endpoints a turn's Firmary tools
+	// may use (launch.TurnFirmary); any other value refuses every turn that has them.
+	Env string
+	Log *logx.Logger
 	// TurnTimeout bounds one turn; zero means DefaultTurnTimeout.
 	TurnTimeout time.Duration
 	// Disabled, if set, reports an adapter Firmary's signed update manifest paused (disabledAdapters).
@@ -272,9 +275,24 @@ func (h *Helper) Cancel(turnID string) {
 	}
 }
 
-// checkTurn returns ("", "") and the turn's launch profile if its ticket and profile allow it to run, else an error
-// class and a reason code. It doesn't touch the provider.
-func (h *Helper) checkTurn(rec pairing.Record, t protocol.Turn) (ticket.Claims, launch.Profile, string, string) {
+// checkTurn returns ("", "") with the turn's launch profile and Firmary credential if its ticket, profile and
+// credential allow it to run, else an error class and a reason code. It doesn't touch the provider.
+func (h *Helper) checkTurn(rec pairing.Record, t protocol.Turn) (ticket.Claims, launch.Profile, *launch.Firmary, string, string) {
+	c, lp, class, reason := h.checkTicket(rec, t)
+	if reason != "" {
+		return c, lp, nil, class, reason
+	}
+	// The credential isn't signed by the ticket: it is checked against the signed profile and this Link's environment.
+	fm, err := launch.TurnFirmary(lp, t.Firmary, h.Env)
+	if err != nil {
+		return c, lp, nil, protocol.ClassPolicy, string(launch.ReasonFirmaryInvalid)
+	}
+	return c, lp, fm, "", ""
+}
+
+// checkTicket returns ("", "") and the turn's launch profile if its ticket and profile allow it to run, else an error
+// class and a reason code.
+func (h *Helper) checkTicket(rec pairing.Record, t protocol.Turn) (ticket.Claims, launch.Profile, string, string) {
 	var lp launch.Profile
 	c, err := h.Verifier.Verify(t.Ticket)
 	if err != nil {
@@ -368,7 +386,7 @@ func (h *Helper) HandleTurn(ctx context.Context, rec pairing.Record, t protocol.
 		h.Log.Log(logx.TurnRejected, logx.Fields{TicketID: c.TicketID, Provider: provider, ErrorClass: class, Reason: reason})
 		emit(protocol.Error(class, reason))
 	}
-	c, lp, class, reason := h.checkTurn(rec, t)
+	c, lp, fm, class, reason := h.checkTurn(rec, t)
 	if reason != "" {
 		reject(c, class, reason)
 		return
@@ -420,6 +438,7 @@ func (h *Helper) HandleTurn(ctx context.Context, rec pairing.Record, t protocol.
 	var windows []logx.Window
 	err := drv.Run(rctx, h.Profile(rec, drv), driver.Turn{
 		ID: c.TicketID, Model: c.Model, Context: t.Context, Prompt: t.Prompt, MaxOutputTokens: c.MaxOutputTokens, Launch: lp,
+		Firmary: fm,
 	}, func(e protocol.StreamEvent) {
 		switch e.T {
 		case protocol.EvUsage:

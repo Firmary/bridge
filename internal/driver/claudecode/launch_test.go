@@ -87,7 +87,7 @@ func TestNoServerStringOnCommandLine(t *testing.T) {
 	const model = "claude-model-canary"
 	prof := driver.Profile{UserID: "u1", Dir: "/profile"}
 	own := map[string]bool{"--allowedTools": true, "--max-turns": true, "--effort": true, "--system-prompt-file": true,
-		"--append-system-prompt-file": true}
+		"--append-system-prompt-file": true, "--mcp-config": true}
 	for _, a := range fixedArgs("", "") {
 		if own[a] {
 			t.Errorf("profile flag %s is also a fixed flag", a)
@@ -96,12 +96,20 @@ func TestNoServerStringOnCommandLine(t *testing.T) {
 	for _, a := range fixedArgs("", "") {
 		own[a] = true
 	}
+	toolSets := [][]string{nil, {launch.ToolWebSearch}, {launch.ToolFirmary}, launch.Tools}
 	for _, name := range launch.Tools {
 		names, ok := toolNames[name]
-		if !ok || len(names) == 0 || slices.Contains(names, "WebFetch") {
-			t.Errorf("catalog tool %s maps to %v", name, names)
+		allow := allowNames[name]
+		if !ok || len(allow) == 0 || slices.Contains(names, "WebFetch") || slices.Contains(allow, "WebFetch") {
+			t.Errorf("catalog tool %s maps to %v, allowing %v", name, names, allow)
 		}
-		own[strings.Join(names, ",")] = true
+	}
+	for _, set := range toolSets {
+		var names, allow []string
+		for _, name := range set {
+			names, allow = append(names, toolNames[name]...), append(allow, allowNames[name]...)
+		}
+		own[strings.Join(names, ",")], own[strings.Join(allow, ",")] = true, true
 	}
 	for _, e := range launch.Efforts {
 		v, ok := efforts[e]
@@ -113,9 +121,9 @@ func TestNoServerStringOnCommandLine(t *testing.T) {
 	for n := 1; n <= launch.MaxTurns; n++ {
 		own[strconv.Itoa(n)] = true
 	}
-	own[model], own[systemPromptFile(prof)] = true, true
+	own[model], own[systemPromptFile(prof)], own[mcpConfigFile(prof)] = true, true, true
 
-	for _, tools := range [][]string{nil, launch.Tools} {
+	for _, tools := range toolSets {
 		for _, effort := range append([]string{""}, launch.Efforts...) {
 			for _, keep := range []bool{false, true} {
 				for turns := 0; turns <= launch.MaxTurns; turns++ {

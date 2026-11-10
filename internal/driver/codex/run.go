@@ -58,16 +58,26 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 		return fail(protocol.ClassPolicy, "max_output_tokens_invalid")
 	}
 	// Held until Codex exits (deferred), so no status, sign-in or sign-out rewrites this turn's prompt or config.
+	firmary := t.Launch.HasTool(launch.ToolFirmary)
+	if firmary != (t.Firmary != nil) {
+		// The helper sends a credential exactly when the profile turns the firmary tool on.
+		return fail(protocol.ClassPolicy, string(launch.ReasonFirmaryInvalid))
+	}
 	m := d.profileLock(p)
 	m.Lock()
 	defer m.Unlock()
-	if err := d.prepare(p, t.Launch); err != nil {
+	if err := d.prepare(p, t.Launch, t.Firmary); err != nil {
 		return fail(protocol.ClassFatal, "profile_unavailable")
 	}
 
 	rctx, stop := context.WithCancel(ctx)
 	defer stop()
 	cmd := d.command(rctx, bin, p, d.runArgs(p, t.Model, t.Launch)...)
+	if t.Firmary != nil {
+		// Only this Codex gets the token, in its own environment (the Link's inherited one never carries it: Env
+		// passes an allowlist).
+		cmd.Env = append(cmd.Env, FirmaryTokenEnv+"="+t.Firmary.AccessToken)
+	}
 	cmd.Stdin = strings.NewReader(input(t))
 	// stderr is kept in memory, bounded, only to classify a failure. It is never logged or forwarded.
 	var stderr bytes.Buffer
@@ -80,7 +90,7 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 		return fail(protocol.ClassFatal, "spawn_failed")
 	}
 
-	st := streamState{model: t.Model, webSearch: t.Launch.HasTool(launch.ToolWebSearch)}
+	st := streamState{model: t.Model, webSearch: t.Launch.HasTool(launch.ToolWebSearch), firmary: firmary}
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64<<10), 16<<20)
 	for sc.Scan() {
@@ -128,6 +138,7 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 type streamState struct {
 	model     string
 	webSearch bool // the launch profile turned web search on, so its items are expected
+	firmary   bool // the launch profile turned Firmary's tools on, so calls to its MCP server are expected
 	started   bool
 	threadID  string
 	completed bool
@@ -148,6 +159,7 @@ type execLine struct {
 		Type    string `json:"type"`
 		Text    string `json:"text"`
 		Message string `json:"message"`
+		Server  string `json:"server"` // mcp_tool_call: the MCP server's name
 	} `json:"item"`
 	Usage *struct {
 		InputTokens       int64 `json:"input_tokens"`
@@ -187,6 +199,11 @@ func (s *streamState) line(b []byte) []protocol.StreamEvent {
 			return nil
 		}
 		if m.Item.Type == "web_search" && s.webSearch {
+			return nil
+		}
+		// Firmary's own MCP server runs on Firmary, which checks the person's permissions and approvals itself.
+		// A call to any other server is still a tool that shouldn't exist and ends the turn.
+		if m.Item.Type == "mcp_tool_call" && s.firmary && m.Item.Server == firmaryServer {
 			return nil
 		}
 		if toolItems[m.Item.Type] {

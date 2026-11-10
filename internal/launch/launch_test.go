@@ -150,7 +150,7 @@ func TestCapabilitiesMatchCatalog(t *testing.T) {
 		!slices.Equal(c.ClaudeKnobs, ClaudeKnobs) || !slices.Equal(c.CodexKnobs, CodexKnobs) {
 		t.Fatalf("capabilities %+v", c)
 	}
-	if !slices.Equal(Tools, []string{"web_search"}) {
+	if !slices.Equal(Tools, []string{"web_search", "firmary"}) {
 		t.Fatalf("the catalog grew to %v: each new entry needs its own security review (design §3)", Tools)
 	}
 	for _, k := range ClaudeKnobs {
