@@ -433,6 +433,64 @@ func TestLaunchProfile(t *testing.T) {
 	}
 }
 
+// TestFirmaryTools: a turn whose signed profile turns the firmary tool on runs only with a valid credential for this
+// Link's environment, which reaches Claude Code in its MCP config; a credential the profile didn't ask for, or a bad
+// one, refuses the turn. Neither the token nor the endpoint is ever logged.
+func TestFirmaryTools(t *testing.T) {
+	g := startRig(t, func(h *helper.Helper) { h.Env = "local" })
+	r, dev := g.r, g.dev
+	const local = "http://127.0.0.1:3000/api/mcp"
+	cred := func(url, token string) map[string]string { return map[string]string{"url": url, "accessToken": token} }
+	send := func(profile string, firmary any) []protocol.StreamEvent {
+		t.Helper()
+		c := r.Claims(dev, pinVersion, "", testkit.PromptCanary)
+		c.ProfileHash = protocol.ProfileHash(profile)
+		var err error
+		if firmary == nil {
+			err = r.SendTurnProfile(c, "", testkit.PromptCanary, profile)
+		} else {
+			err = r.SendTurnFirmary(c, "", testkit.PromptCanary, profile, firmary)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return terminal(t, r, c.TicketID)
+	}
+	on, off := `{"schema":1,"tools":["firmary"],"maxTurns":10}`, `{"schema":1}`
+	for name, c := range map[string]struct {
+		profile string
+		firmary any
+	}{
+		"tool without credential":   {on, nil},
+		"credential without tool":   {off, cred(local, testkit.FirmaryToken)},
+		"production host on local":  {on, cred("https://firmary.app/api/mcp", testkit.FirmaryToken)},
+		"wrong path":                {on, cred("http://127.0.0.1:3000/mcp", testkit.FirmaryToken)},
+		"not an MCP access token":   {on, cred(local, "fmrt_"+testkit.FirmaryToken[5:])},
+		"credential that is a list": {on, []string{local, testkit.FirmaryToken}},
+	} {
+		if evs := send(c.profile, c.firmary); len(evs) != 1 || evs[0].T != protocol.EvError ||
+			evs[0].Class != protocol.ClassPolicy || evs[0].Pattern != "firmary_tools_invalid" {
+			t.Errorf("%s: got %+v, want policy error firmary_tools_invalid", name, evs)
+		}
+	}
+
+	if evs := send(on, cred(local, testkit.FirmaryToken)); evs[len(evs)-1].T != protocol.EvDone {
+		t.Fatalf("turn with Firmary tools: %+v", evs)
+	}
+	g.stop()
+	args := testkit.ReadDir(t, g.dump)
+	if !strings.Contains(args, "[--allowedTools]\n[mcp__firmary]\n") || !strings.Contains(args, `"Bearer `+testkit.FirmaryToken+`"`) {
+		t.Errorf("claude run:\n%s", args)
+	}
+	written := testkit.ReadDir(t, filepath.Join(g.data, "logs"))
+	if strings.Contains(written, testkit.FirmaryToken) || strings.Contains(written, "127.0.0.1:3000") {
+		t.Error("the Firmary token or endpoint was logged")
+	}
+	if !strings.Contains(written, `"reason":"firmary_tools_invalid"`) {
+		t.Error("log has no firmary_tools_invalid rejection")
+	}
+}
+
 // slowDriver's Status waits until gate closes, like a provider's first status check on a fresh profile.
 type slowDriver struct {
 	driver.Driver

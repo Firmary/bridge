@@ -139,6 +139,8 @@ other.
 - **Turns.** A turn runs only with a ticket signed by Firmary's pinned key that is for this device and its paired
   user, unexpired, unused and matches the prompt. The ticket's adapter picks the app: `helper-claude-code` or
   `helper-codex`.
+- **Firmary's own tools.** When Firmary turns them on for a turn, the Link gives the turn Firmary's own tools,
+  scoped to that person and that turn, and to nothing else.
 - **`hello`.** Reports `kind` (`desktop` for the app, `server` for the always-on service or any run without a
   desktop session; also in `pairing_reveal.device`) and both provider apps: `signedIn`, `accountType` (Claude: the
   Claude plan; Codex: the ChatGPT plan type), `orgId` (the Claude organisation or the ChatGPT workspace),

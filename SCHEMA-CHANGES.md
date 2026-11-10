@@ -353,6 +353,44 @@ No message, field or context string changed: the wire contract keeps its `helper
   `archiveSha256`, the release archive's checksum, next to `sha256` (the executable's), because the Link verifies
   both. A firmary-os manifest publisher should emit it too.
 
+## 10. Firmary tools (P17)
+
+The launch catalog gains `firmary`: Firmary's own MCP server, called by the turn's Claude Code or Codex with a
+short-lived token the server sends with the turn. Firmary enforces every permission and approval on its side
+(`confirmation_required`, then the same tool again with `confirmationId` and `waitSeconds`); the Link has no approval
+logic of its own.
+
+- **`hello.launch.tools`** is now `["web_search", "firmary"]`.
+- **`turn.firmary`** (optional, outside the signed profile and the ticket): `{url, accessToken}`, present exactly
+  when the profile's `tools` has `firmary`. The Link refuses the turn with `policy` / `firmary_tools_invalid` when the
+  profile has the tool and the turn has no valid credential, or the turn has a credential the profile didn't ask for.
+  Keys other than `url` and `accessToken` are ignored; a repeated key or `null` is refused. The shared fixtures
+  (`relay-to-helper.fixtures.json`: "turn with Firmary tools (P17)" and its two invalid cases) are copied into
+  `internal/protocol/testdata`.
+  - `accessToken` must match `^fmcp_[A-Za-z0-9_-]{43}$`.
+  - `url` must match the contract's `^https?://[A-Za-z0-9.-]+(?::\d{1,5})?/api/mcp$` (at most 300 characters; the
+    Link also accepts `[::1]` on a local relay), with the path exactly `/api/mcp`, and no userinfo, query or
+    fragment. Stricter than Zod: its origin must belong to the Link's environment. **prod and dev:** `https`,
+    host `firmary.app` or a subdomain of it, no port. **local** (the fake relay): `http` or `https` on `127.0.0.1`,
+    `localhost` or `[::1]`, any port. Anything else is `firmary_tools_invalid`.
+- **New error pattern** for §5: `firmary_tools_invalid` (class `policy`). Don't retry.
+- **Never logged or put on a command line:** the token and the endpoint.
+- **`maxTurns`.** With `firmary` on, Claude Code gets `--max-turns` (the profile's, else 10), as for web search.
+  Codex has no turn limit (§8).
+- **The fallback prompt** doesn't mention Firmary's tools. The server always sends a `systemPrompt` with tools on,
+  so it is never used for such a turn.
+
+How each provider gets the tools (checked on the pinned binaries by `TestRealFirmaryTools` in each driver, against
+a stub provider API and a fake Firmary MCP server):
+
+| | Claude Code 2.1.304 | Codex 0.166.0 |
+| --- | --- | --- |
+| Server | `--mcp-config <file>`: a `0600` file in the profile, `{"mcpServers":{"firmary":{"type":"http","url":…,"headers":{"Authorization":"Bearer …"}}}}`, removed when the run ends. `--strict-mcp-config` stays, so no other MCP configuration is read | In `config.toml` only: `mcp_servers.firmary.url`, `mcp_servers.firmary.bearer_token_env_var="FIRMARY_MCP_TOKEN"`. The token is set only in that Codex's environment |
+| Built-in tools | `--tools` still lists only the catalog's built-ins (`""` for `firmary` alone): it governs built-in tools, not MCP tools | Unchanged locked settings |
+| No local prompt | `--allowedTools mcp__firmary` (every tool of that server and nothing else) | `mcp_servers.firmary.default_tools_approval_mode="approve"`: under `approval_policy="never"`, Codex would otherwise refuse any tool not annotated read-only |
+| Startup | Waits for the server | `mcp_servers.firmary.required=true`: waits for the server instead of dropping its tools after the default 1-second grace, and fails the turn if it can't connect |
+| How the model sees them | `mcp__firmary__<tool>` | Deferred behind Codex's own client-side `tool_search` (always on in 0.166.0), as namespace `mcp__firmary`; Codex also offers its MCP resource tools (`list_mcp_resources`, …), which reach only Firmary's server. Exec's `mcp_tool_call` items for server `firmary` are let through; any other tool item still ends the turn |
+
 ## Not covered here
 
 The other task reconciling the schemas will find these older differences between this Helper and S1. They predate

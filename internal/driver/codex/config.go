@@ -18,7 +18,8 @@ import (
 // offers, apply_patch, comes from the model catalog and can't be switched off; the read-only sandbox and "never"
 // approval reject every write it tries), no MCP servers, apps, plugins, hooks, skills, memories, browser or computer
 // use, no AGENTS.md or other project instructions, no environment context, and nothing saved. Web search, which OpenAI
-// runs, is off unless the launch profile turns it on.
+// runs, is off unless the launch profile turns it on, and so is Firmary's own MCP server, which runs on Firmary
+// (firmarySettings).
 var settings = []string{
 	// Updates come only from Firmary's pin: Codex's own update check and prompt are off.
 	`check_for_update_on_startup=false`,
