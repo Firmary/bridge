@@ -126,8 +126,9 @@ func NewRelease(t *testing.T, version, platform string, bin []byte) *Release {
 }
 
 // FakeClaude returns a POSIX shell script standing in for `claude`. `auth status` prints a signed-in Team login;
-// a run records its environment, arguments and stdin under dumpDir, writes a canary to stderr, and streams a reply
-// that contains OutputCanary. A prompt containing SlowPrompt sleeps for a minute first.
+// a run records its environment, arguments, stdin and any --mcp-config file (with its mode) under dumpDir, writes a
+// canary to stderr, and streams a reply that contains OutputCanary. A prompt containing SlowPrompt sleeps for a
+// minute first.
 func FakeClaude(dumpDir string) []byte {
 	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 	status := `{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty","email":"` + EmailCanary +
@@ -145,6 +146,9 @@ func FakeClaude(dumpDir string) []byte {
 	b.WriteString(`if [ "$1" = "auth" ]; then printf '%s\n' ` + q(status) + "; exit 0; fi\n")
 	b.WriteString("env > " + q(filepath.Join(dumpDir, "env")) + "\n")
 	b.WriteString(`for a in "$@"; do printf '[%s]\n' "$a"; done > ` + q(filepath.Join(dumpDir, "args")) + "\n")
+	// The MCP config named by --mcp-config, and its mode as ls shows it, as they were while the run went on.
+	b.WriteString(`prev=; for a in "$@"; do if [ "$prev" = --mcp-config ]; then cat "$a" > ` + q(filepath.Join(dumpDir, "mcp-config")) +
+		`; ls -l "$a" | cut -c1-10 > ` + q(filepath.Join(dumpDir, "mcp-config-mode")) + `; fi; prev=$a; done` + "\n")
 	b.WriteString("pwd > " + q(filepath.Join(dumpDir, "cwd")) + "\n")
 	b.WriteString("cat > " + q(filepath.Join(dumpDir, "stdin")) + "\n")
 	b.WriteString("if grep -q " + SlowPrompt + " " + q(filepath.Join(dumpDir, "stdin")) + "; then sleep 60; fi\n")

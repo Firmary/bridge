@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"math"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -28,9 +30,11 @@ var ModelRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._:\[\]-]{0,99}$`)
 // MaxOutputTokensCap bounds the ticket's maxOutputTokens.
 const MaxOutputTokensCap = 128000
 
-// fixedArgs: print mode with streamed JSON and nothing that could act on this computer. No MCP servers, no settings
-// files (user, project or local), no slash commands or skills, nothing saved to resume, and only the tools named in
-// --tools, which come from the catalog (toolNames), never from the server. A launch profile can't change any of these.
+// fixedArgs: print mode with streamed JSON and nothing that could act on this computer. No MCP servers but the one
+// --mcp-config names (only Firmary's own, written by this package; --strict-mcp-config ignores every other MCP
+// configuration), no settings files (user, project or local), no slash commands or skills, nothing saved to resume,
+// and only the built-in tools named in --tools, which come from the catalog (toolNames), never from the server. A
+// launch profile can't change any of these.
 func fixedArgs(model, tools string) []string {
 	return []string{
 		"-p", "--input-format", "text", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
@@ -39,11 +43,25 @@ func fixedArgs(model, tools string) []string {
 	}
 }
 
-// toolNames maps each launch catalog tool to the Claude Code tools it turns on. WebSearch runs on Anthropic's servers;
-// WebFetch, which fetches from this computer, is never included.
-var toolNames = map[string][]string{
-	launch.ToolWebSearch: {"WebSearch"},
-}
+// toolNames maps each launch catalog tool to the built-in Claude Code tools it turns on (--tools), and allowNames to
+// the tools --allowedTools lets run without a prompt. WebSearch runs on Anthropic's servers; WebFetch, which fetches
+// from this computer, is never included. The firmary tool turns on no built-in tool: --tools only lists built-ins and
+// leaves MCP tools alone (Claude Code 2.1.304 --help: "Specify the list of available tools from the built-in set"), so
+// the --tools value stays "" and the tools of the one MCP server in --mcp-config are offered. "mcp__firmary" allows
+// every tool of that server and nothing else (Claude Code's permission rule for a whole MCP server).
+var (
+	toolNames = map[string][]string{
+		launch.ToolWebSearch: {"WebSearch"},
+		launch.ToolFirmary:   nil,
+	}
+	allowNames = map[string][]string{
+		launch.ToolWebSearch: {"WebSearch"},
+		launch.ToolFirmary:   {"mcp__" + firmaryServer},
+	}
+)
+
+// firmaryServer is the name of Firmary's MCP server in the turn's MCP config, and so the prefix of its tool names.
+const firmaryServer = "firmary"
 
 // efforts maps each launch effort to Claude Code's --effort level (low, medium, high, xhigh, max on 2.1.304).
 var efforts = map[string]string{"low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"}
@@ -52,20 +70,24 @@ var efforts = map[string]string{"low": "low", "medium": "medium", "high": "high"
 // tables. The only server string that reaches the command line is the model (from the ticket, checked by ModelRe);
 // max turns is a checked number, and the system prompt goes in a file whose path is passed.
 func runArgs(p driver.Profile, model string, l launch.Profile) []string {
-	var tools []string
+	var tools, allowed []string
 	for _, name := range l.Tools {
 		tools = append(tools, toolNames[name]...)
+		allowed = append(allowed, allowNames[name]...)
 	}
-	list := strings.Join(tools, ",")
-	args := fixedArgs(model, list)
-	if len(tools) > 0 {
+	args := fixedArgs(model, strings.Join(tools, ","))
+	if l.HasTool(launch.ToolFirmary) {
+		// The file holds the turn's access token, so it is passed by path (0600, removed when the run ends).
+		args = append(args, "--mcp-config", mcpConfigFile(p))
+	}
+	if len(allowed) > 0 {
 		// Under --permission-mode default nobody can approve a tool in -p, so a tool runs only if it is allowed here.
 		// A tool means an agent loop, so it is always bounded: by the profile's maxTurns, else by the ceiling.
 		turns := l.MaxTurns
 		if turns <= 0 {
 			turns = launch.MaxTurns
 		}
-		args = append(args, "--allowedTools", list, "--max-turns", strconv.Itoa(turns))
+		args = append(args, "--allowedTools", strings.Join(allowed, ","), "--max-turns", strconv.Itoa(turns))
 	}
 	if e, ok := efforts[l.Effort]; ok {
 		args = append(args, "--effort", e)
@@ -78,13 +100,41 @@ func systemPromptFile(p driver.Profile) string {
 	return filepath.Join(p.Dir, "firmary-system-prompt.md")
 }
 
+// mcpConfigFile is where the turn's MCP config for --mcp-config is written when the firmary tool is on.
+func mcpConfigFile(p driver.Profile) string {
+	return filepath.Join(p.Dir, "firmary-mcp.json")
+}
+
+// mcpConfig is the --mcp-config document: Firmary's MCP server over Streamable HTTP with the turn's bearer token.
+type mcpConfig struct {
+	MCPServers map[string]mcpServer `json:"mcpServers"`
+}
+
+type mcpServer struct {
+	Type    string            `json:"type"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+}
+
+// writeMCPConfig writes the turn's MCP config (0600). The token goes in this file only: never on the command line,
+// where other local users could read it, nor in the environment.
+func writeMCPConfig(p driver.Profile, f launch.Firmary) error {
+	b, err := json.Marshal(mcpConfig{MCPServers: map[string]mcpServer{firmaryServer: {
+		Type: "http", URL: f.URL, Headers: map[string]string{"Authorization": "Bearer " + f.AccessToken},
+	}}})
+	if err != nil {
+		return err
+	}
+	return driver.WriteFileAtomic(mcpConfigFile(p), b)
+}
+
 // systemPromptText is the turn's system prompt: the launch profile's, else Firmary's built-in default for the
 // profile's tools.
 func systemPromptText(l launch.Profile) string {
 	if l.SystemPrompt != "" {
 		return l.SystemPrompt
 	}
-	return prompt.Fallback(l.HasTool(launch.ToolWebSearch))
+	return prompt.Fallback(l.HasTool(launch.ToolWebSearch), l.HasTool(launch.ToolFirmary))
 }
 
 // writeSystemPrompt writes the turn's resolved system prompt to the profile (0600, rewritten every turn). It goes
@@ -113,7 +163,11 @@ func input(t driver.Turn) string {
 
 // Run runs one turn with the pinned Claude Code under the profile.
 func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit func(protocol.StreamEvent)) error {
+	// removeMCP removes the turn's MCP config (its token) once Claude Code no longer needs it. It runs before the
+	// terminal event goes out: the helper frees the turn slot then, so the next turn may already be writing its own.
+	removeMCP := func() {}
 	fail := func(class, pattern string) error {
+		removeMCP()
 		emit(protocol.Error(class, pattern))
 		return &driver.Failure{Class: class, Pattern: pattern}
 	}
@@ -132,6 +186,20 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 	}
 	if err := writeSystemPrompt(p, systemPromptText(t.Launch)); err != nil {
 		return fail(protocol.ClassFatal, "profile_unavailable")
+	}
+	// A config left by a run that never got to clean up (a crash) holds a token that has since lapsed; it goes either
+	// way. The helper sends a credential exactly when the profile turns the firmary tool on.
+	if err := os.Remove(mcpConfigFile(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fail(protocol.ClassFatal, "profile_unavailable")
+	}
+	if t.Launch.HasTool(launch.ToolFirmary) != (t.Firmary != nil) {
+		return fail(protocol.ClassPolicy, string(launch.ReasonFirmaryInvalid))
+	}
+	if t.Firmary != nil {
+		removeMCP = func() { _ = os.Remove(mcpConfigFile(p)) }
+		if err := writeMCPConfig(p, *t.Firmary); err != nil {
+			return fail(protocol.ClassFatal, "profile_unavailable")
+		}
 	}
 
 	cmd := proc.CommandContext(ctx, bin, runArgs(p, t.Model, t.Launch)...)
@@ -164,6 +232,7 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 	}
 	_, _ = io.Copy(io.Discard, stdout)
 	waitErr := cmd.Wait()
+	removeMCP()
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fail(protocol.ClassTransient, "turn_timeout")
@@ -192,6 +261,9 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 type streamState struct {
 	started        bool
 	deltaSeen      bool
+	answered       bool   // text was sent
+	newMessage     bool   // a later model response (after a tool call) began, so its text starts a new paragraph
+	messageID      string // the model response the last assistant record without deltas belonged to
 	assistantError string
 	result         *resultMsg
 }
@@ -233,6 +305,7 @@ type streamLine struct {
 		} `json:"delta"`
 	} `json:"event"`
 	Message struct {
+		ID      string `json:"id"`
 		Content []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -272,6 +345,17 @@ func limitWindow(name string, utilization, resetsAt *float64) (protocol.LimitWin
 	return w, true
 }
 
+// text is a text delta of the answer. The first text of a model response after an earlier one's (an agent loop: text,
+// a tool call, then more text) starts a new paragraph, so the two never run together.
+func (s *streamState) text(t string) protocol.StreamEvent {
+	if s.newMessage {
+		t = "\n\n" + t
+		s.newMessage = false
+	}
+	s.answered = true
+	return protocol.TextDelta(t)
+}
+
 func (s *streamState) line(b []byte) []protocol.StreamEvent {
 	var m streamLine
 	if json.Unmarshal(b, &m) != nil {
@@ -284,9 +368,12 @@ func (s *streamState) line(b []byte) []protocol.StreamEvent {
 			return []protocol.StreamEvent{protocol.Start(m.Model)}
 		}
 	case "stream_event":
+		if m.Event.Type == "message_start" {
+			s.newMessage = s.answered
+		}
 		if m.Event.Type == "content_block_delta" && m.Event.Delta.Type == "text_delta" && m.Event.Delta.Text != "" {
 			s.deltaSeen = true
-			return []protocol.StreamEvent{protocol.TextDelta(m.Event.Delta.Text)}
+			return []protocol.StreamEvent{s.text(m.Event.Delta.Text)}
 		}
 	case "assistant":
 		// An assistant message with an error is Claude Code's own error text (for example "Not logged in"), not
@@ -303,10 +390,16 @@ func (s *streamState) line(b []byte) []protocol.StreamEvent {
 		if seen {
 			return nil
 		}
+		// Without deltas, a record from a different response (or one with no id) is a later response, as a
+		// message_start would have said.
+		if m.Message.ID == "" || m.Message.ID != s.messageID {
+			s.newMessage = s.newMessage || s.answered
+		}
+		s.messageID = m.Message.ID
 		var out []protocol.StreamEvent
 		for _, c := range m.Message.Content {
 			if c.Type == "text" && c.Text != "" {
-				out = append(out, protocol.TextDelta(c.Text))
+				out = append(out, s.text(c.Text))
 			}
 		}
 		return out

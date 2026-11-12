@@ -244,3 +244,45 @@ func TestManagedSettingsReported(t *testing.T) {
 		t.Error("managed-settings.d not reported")
 	}
 }
+
+// TestResponsesAreParagraphs: in an agent loop the text of a later model response starts a new paragraph instead of
+// running on from the one before the tool call; deltas within one response are joined as they come.
+func TestResponsesAreParagraphs(t *testing.T) {
+	var s streamState
+	var text strings.Builder
+	for _, l := range []string{
+		`{"type":"stream_event","event":{"type":"message_start"}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Let me "}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"look."}}}`,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"Let me look."}]}}`,
+		`{"type":"stream_event","event":{"type":"message_start"}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Due Friday."}}}`,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"Due Friday."}]}}`,
+	} {
+		for _, e := range s.line([]byte(l)) {
+			text.WriteString(e.Text)
+		}
+	}
+	if got := text.String(); got != "Let me look.\n\nDue Friday." {
+		t.Fatalf("text %q", got)
+	}
+}
+
+// TestResponsesWithoutDeltasAreParagraphs: with no message_start or deltas, two responses' assistant records are still
+// separate paragraphs, while two records of one response (the same id) are joined.
+func TestResponsesWithoutDeltasAreParagraphs(t *testing.T) {
+	var s streamState
+	var text strings.Builder
+	for _, l := range []string{
+		`{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Let me "}]}}`,
+		`{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"look."}]}}`,
+		`{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"Due Friday."}]}}`,
+	} {
+		for _, e := range s.line([]byte(l)) {
+			text.WriteString(e.Text)
+		}
+	}
+	if got := text.String(); got != "Let me look.\n\nDue Friday." {
+		t.Fatalf("text %q", got)
+	}
+}

@@ -15,7 +15,7 @@ func TestDefaultPromptIsEmbedded(t *testing.T) {
 // browse, still rules out acting on the computer and treats search results as reference only, and keeps the same
 // style text as Default (review F8).
 func TestWebSearchFallbackIsTrue(t *testing.T) {
-	if Fallback(false) != Default || Fallback(true) != DefaultWebSearch {
+	if Fallback(false, false) != Default || Fallback(true, false) != DefaultWebSearch {
 		t.Fatal("Fallback picks the wrong prompt")
 	}
 	w := DefaultWebSearch
@@ -37,5 +37,26 @@ func TestWebSearchFallbackIsTrue(t *testing.T) {
 	_, wstyle, _ := strings.Cut(w, "\n\n")
 	if style == "" || style != wstyle {
 		t.Error("the style text differs from Default's")
+	}
+}
+
+// TestFirmaryFallbackNamesTools: with Firmary's tools on, the fallback keeps the required block and style text and adds
+// firmary-os's exception lines after the required block, in its order (web search first), so it never leaves the
+// model believing it has no tools.
+func TestFirmaryFallbackNamesTools(t *testing.T) {
+	required, style, _ := strings.Cut(Default, "\n\n")
+	for _, c := range []struct {
+		webSearch bool
+		lines     string
+	}{
+		{false, firmaryException + " " + stillNoComputer},
+		{true, webSearchException + " " + firmaryException + " " + stillNoComputer},
+	} {
+		if got, want := Fallback(c.webSearch, true), required+"\n\n"+c.lines+"\n\n"+style; got != want {
+			t.Errorf("webSearch=%v: %q", c.webSearch, got)
+		}
+	}
+	if !strings.Contains(firmaryException, "Firmary tools") || !strings.Contains(firmaryException, "confirmationId and waitSeconds") {
+		t.Error("the Firmary exception lost the server's wording")
 	}
 }

@@ -160,7 +160,7 @@ func Open(o Options) (*Agent, error) {
 	tickets.Remember(filepath.Join(a.EnvDir, "used-tickets.json"))
 	a.Helper = &helper.Helper{
 		Providers: []helper.Provider{{Adapter: helper.AdapterClaudeCode, Driver: a.Claude}, {Adapter: helper.AdapterCodex, Driver: a.Codex}},
-		Verifier:  tickets, DataDir: a.EnvDir, Version: o.Version, Ring: o.Ring, Log: log,
+		Verifier:  tickets, DataDir: a.EnvDir, Version: o.Version, Ring: o.Ring, Env: o.EnvName, Log: log,
 		Disabled: a.Updater.Disabled, HelloExtra: a.helloExtra,
 		// A status check that outlasted hello changes only this process's report, so no other process is told.
 		Changed: a.refreshHere,

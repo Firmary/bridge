@@ -4,6 +4,7 @@ package claudecode
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -87,7 +88,7 @@ func TestNoServerStringOnCommandLine(t *testing.T) {
 	const model = "claude-model-canary"
 	prof := driver.Profile{UserID: "u1", Dir: "/profile"}
 	own := map[string]bool{"--allowedTools": true, "--max-turns": true, "--effort": true, "--system-prompt-file": true,
-		"--append-system-prompt-file": true}
+		"--append-system-prompt-file": true, "--mcp-config": true}
 	for _, a := range fixedArgs("", "") {
 		if own[a] {
 			t.Errorf("profile flag %s is also a fixed flag", a)
@@ -96,12 +97,20 @@ func TestNoServerStringOnCommandLine(t *testing.T) {
 	for _, a := range fixedArgs("", "") {
 		own[a] = true
 	}
+	toolSets := [][]string{nil, {launch.ToolWebSearch}, {launch.ToolFirmary}, launch.Tools}
 	for _, name := range launch.Tools {
 		names, ok := toolNames[name]
-		if !ok || len(names) == 0 || slices.Contains(names, "WebFetch") {
-			t.Errorf("catalog tool %s maps to %v", name, names)
+		allow := allowNames[name]
+		if !ok || len(allow) == 0 || slices.Contains(names, "WebFetch") || slices.Contains(allow, "WebFetch") {
+			t.Errorf("catalog tool %s maps to %v, allowing %v", name, names, allow)
 		}
-		own[strings.Join(names, ",")] = true
+	}
+	for _, set := range toolSets {
+		var names, allow []string
+		for _, name := range set {
+			names, allow = append(names, toolNames[name]...), append(allow, allowNames[name]...)
+		}
+		own[strings.Join(names, ",")], own[strings.Join(allow, ",")] = true, true
 	}
 	for _, e := range launch.Efforts {
 		v, ok := efforts[e]
@@ -113,9 +122,9 @@ func TestNoServerStringOnCommandLine(t *testing.T) {
 	for n := 1; n <= launch.MaxTurns; n++ {
 		own[strconv.Itoa(n)] = true
 	}
-	own[model], own[systemPromptFile(prof)] = true, true
+	own[model], own[systemPromptFile(prof)], own[mcpConfigFile(prof)] = true, true, true
 
-	for _, tools := range [][]string{nil, launch.Tools} {
+	for _, tools := range toolSets {
 		for _, effort := range append([]string{""}, launch.Efforts...) {
 			for _, keep := range []bool{false, true} {
 				for turns := 0; turns <= launch.MaxTurns; turns++ {
@@ -179,6 +188,8 @@ func TestFallbackPromptFollowsTools(t *testing.T) {
 		`{"schema":1}`:                                              prompt.Default,
 		`{"schema":1,"tools":[]}`:                                   prompt.Default,
 		`{"schema":1,"tools":["web_search"]}`:                       prompt.DefaultWebSearch,
+		`{"schema":1,"tools":["firmary"]}`:                          prompt.Fallback(false, true),
+		`{"schema":1,"tools":["web_search","firmary"]}`:             prompt.Fallback(true, true),
 		`{"schema":1,"systemPrompt":"Own.","tools":["web_search"]}`: "Own.",
 	} {
 		l, err := launch.Parse(doc)
@@ -201,5 +212,95 @@ func TestCodexKnobsIgnored(t *testing.T) {
 	}
 	if x, y := runArgs(prof, "m", a), runArgs(prof, "m", b); !slices.Equal(x, y) {
 		t.Errorf("Codex knobs changed Claude Code's flags: %q vs %q", x, y)
+	}
+}
+
+// TestRunWithFirmaryTools: with the firmary tool on, the turn's MCP config is a 0600 file holding Firmary's endpoint
+// and the bearer token, passed by path with --mcp-config next to --allowedTools mcp__firmary and a turn limit, with
+// --tools still "" and --strict-mcp-config kept; the token never reaches the command line or the environment, and the
+// file is gone once the run ends. Without the tool none of this is there, and a credential without the tool (or the
+// tool without one) refuses the turn.
+func TestRunWithFirmaryTools(t *testing.T) {
+	dump := t.TempDir()
+	rel := testkit.NewRelease(t, "2.1.304", testPlatform, testkit.FakeClaude(dump))
+	d, err := New(t.TempDir(), WithRelease(rel.URL, rel.Keyring, nil), WithPlatform(testPlatform))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Ensure(context.Background(), driver.Pin{Version: "2.1.304", SHA256: map[string]string{testPlatform: rel.SHA256}}); err != nil {
+		t.Fatal(err)
+	}
+	prof := driver.Profile{UserID: "u1", Dir: filepath.Join(t.TempDir(), "u1")}
+	cred := &launch.Firmary{URL: "https://firmary.app/api/mcp", AccessToken: testkit.FirmaryToken}
+	run := func(profile string, f *launch.Firmary) error {
+		t.Helper()
+		os.Remove(filepath.Join(dump, "mcp-config"))
+		l, err := launch.Parse(profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d.Run(context.Background(), prof, driver.Turn{ID: "t1", Model: "claude-sonnet-4-5", Prompt: testkit.PromptCanary,
+			MaxOutputTokens: 1000, Launch: l, Firmary: f}, func(e protocol.StreamEvent) {
+			// The helper frees the turn slot at the terminal event, so the next turn may write its config from then on.
+			if _, err := os.Stat(mcpConfigFile(prof)); (e.T == protocol.EvDone || e.T == protocol.EvError) && !os.IsNotExist(err) {
+				t.Errorf("the MCP config was still there at %s: %v", e.T, err)
+			}
+		})
+	}
+
+	if err := run(`{"schema":1,"tools":["web_search","firmary"],"maxTurns":10}`, cred); err != nil {
+		t.Fatal(err)
+	}
+	args, _ := os.ReadFile(filepath.Join(dump, "args"))
+	env, _ := os.ReadFile(filepath.Join(dump, "env"))
+	if strings.Contains(string(args)+string(env), testkit.FirmaryToken) || strings.Contains(string(args), "firmary.app") {
+		t.Errorf("the token or endpoint reached the command line or environment:\n%s", args)
+	}
+	for _, want := range []string{"[--tools]\n[WebSearch]\n", "[--strict-mcp-config]\n",
+		"[--mcp-config]\n[" + mcpConfigFile(prof) + "]\n[--allowedTools]\n[WebSearch,mcp__firmary]\n[--max-turns]\n[10]\n"} {
+		if !strings.Contains(string(args), want) {
+			t.Errorf("missing %q in args:\n%s", want, args)
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(dump, "mcp-config"))
+	if want := `{"mcpServers":{"firmary":{"type":"http","url":"https://firmary.app/api/mcp","headers":{"Authorization":"Bearer ` +
+		testkit.FirmaryToken + `"}}}}`; string(b) != want {
+		t.Errorf("MCP config %s", b)
+	}
+	if mode, _ := os.ReadFile(filepath.Join(dump, "mcp-config-mode")); strings.TrimSpace(string(mode)) != "-rw-------" {
+		t.Errorf("MCP config mode %q", mode)
+	}
+	if _, err := os.Stat(mcpConfigFile(prof)); !os.IsNotExist(err) {
+		t.Errorf("the MCP config outlived the run: %v", err)
+	}
+
+	// Firmary's tools alone: no built-in tool.
+	if err := run(`{"schema":1,"tools":["firmary"],"maxTurns":4}`, cred); err != nil {
+		t.Fatal(err)
+	}
+	args, _ = os.ReadFile(filepath.Join(dump, "args"))
+	if !strings.Contains(string(args), "[--tools]\n[]\n") || !strings.Contains(string(args), "[--allowedTools]\n[mcp__firmary]\n[--max-turns]\n[4]\n") {
+		t.Errorf("firmary only:\n%s", args)
+	}
+
+	if err := run(`{"schema":1,"tools":["web_search"]}`, nil); err != nil {
+		t.Fatal(err)
+	}
+	args, _ = os.ReadFile(filepath.Join(dump, "args"))
+	if strings.Contains(string(args), "--mcp-config") || strings.Contains(string(args), "mcp__") {
+		t.Errorf("MCP flags without the firmary tool:\n%s", args)
+	}
+	if _, err := os.Stat(filepath.Join(dump, "mcp-config")); !os.IsNotExist(err) {
+		t.Error("an MCP config was passed without the firmary tool")
+	}
+
+	var f *driver.Failure
+	for name, err := range map[string]error{
+		"tool without credential": run(`{"schema":1,"tools":["firmary"]}`, nil),
+		"credential without tool": run(`{"schema":1}`, cred),
+	} {
+		if !errors.As(err, &f) || f.Pattern != string(launch.ReasonFirmaryInvalid) {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

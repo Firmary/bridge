@@ -67,6 +67,10 @@ type Turn struct {
 	MaxOutputTokens int
 	// Launch is the turn's checked launch profile. Each driver maps it to its own fixed flags or config.
 	Launch launch.Profile
+	// Firmary is the checked credential for Firmary's own MCP server, set exactly when Launch turns the firmary tool
+	// on (launch.TurnFirmary). A driver passes it to its provider app only through a private file or that app's own
+	// environment, never on a command line, and never logs it.
+	Firmary *launch.Firmary
 }
 
 // Failure is a classified run failure: an error class and a pattern name. It never carries provider text.
