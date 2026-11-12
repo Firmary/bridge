@@ -127,15 +127,17 @@ other.
   display, or with `--headless`, it is the terminal Link.
 - **Its own pinned Claude Code.** The Link installs its own copy from Anthropic's release bucket and checks it
   against Anthropic's signed manifest *and* a checksum Firmary pins. It runs that copy with the updater off, a
-  separate profile, no tools, a cleaned environment, and Firmary's system prompt in place of Claude Code's own. The
+  separate profile, no tools but the ones a turn's launch profile turns on (web search, and Firmary's own MCP server
+from a private config file the turn deletes), a cleaned environment, and Firmary's system prompt in place of Claude Code's own. The
   person's own Claude Code install and login are never touched. Sign-in is `claude auth login --claudeai` in the
   Link's own profile: the browser on a desktop, or a link for any browser plus the code the page shows pasted back.
 - **Its own pinned Codex.** One executable from OpenAI's official GitHub release, checked against two checksums
   Firmary pins (the release archive and the executable in it), in the Link's own `CODEX_HOME` with the update check
   off. Sign-in is Codex's own ChatGPT sign-in, by browser or by device code. A turn is `codex exec --json` with the
   prompt on stdin, a cleaned environment, Firmary's system prompt in place of Codex's built-in instructions, and
-  settings that leave nothing able to act on the computer: no shell, MCP, apps, plugins, hooks, skills, memories, web
-  search, project instruction files or saved sessions. The one tool Codex always offers, `apply_patch`, runs in a
+  settings that leave nothing able to act on the computer: no shell, apps, plugins, hooks, skills, memories, project
+  instruction files or saved sessions, and no MCP server or web search unless the turn's launch profile turns on
+  Firmary's own server or web search. The one tool Codex always offers, `apply_patch`, runs in a
   read-only sandbox with approvals off, so every write it tries is refused.
 - **Turns.** A turn runs only with a ticket signed by Firmary's pinned key that is for this device and its paired
   user, unexpired, unused and matches the prompt. The ticket's adapter picks the app: `helper-claude-code` or

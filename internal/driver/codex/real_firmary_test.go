@@ -168,13 +168,21 @@ func TestRealFirmaryTools(t *testing.T) {
 	if mcp.Unauthorized() > 0 {
 		t.Errorf("%d requests reached Firmary without the turn's token", mcp.Unauthorized())
 	}
-	filepath.WalkDir(home, func(path string, de fs.DirEntry, err error) error {
+	// Every file is read: one the scan can't open fails the test rather than going unchecked.
+	err = filepath.WalkDir(home, func(path string, de fs.DirEntry, err error) error {
 		if err != nil || de.IsDir() {
-			return nil
+			return err
 		}
-		if b, err := os.ReadFile(path); err == nil && strings.Contains(string(b), testkit.FirmaryToken) {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), testkit.FirmaryToken) {
 			t.Errorf("the token was left in %s", path)
 		}
 		return nil
 	})
+	if err != nil {
+		t.Errorf("scanning the profile for the token: %v", err)
+	}
 }

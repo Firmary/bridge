@@ -4,7 +4,8 @@ Apple or Microsoft yet, so your computer warns the first time you open it. A sig
 **New in 0.3.6:** the assistant inside Firmary can now use Firmary itself. When your firm turns this on, a chat
 that runs through Firmary Bridge can look up and change the firm's records (clients, tasks, documents and more) with
 exactly your access, and every change waits for approval in Firmary first. Firmary gives each chat its own short-lived
-access that ends with that chat; it is never saved on your computer or written to the Bridge's log. Answers that
+access that ends with that chat. It stays on your computer only while the chat runs (for Claude, in a private file
+the Bridge deletes when Claude finishes) and is never written to the Bridge's log. Answers that
 come after a lookup now start a new paragraph instead of running on.
 
 **0.3.5** named the Linux desktop package `firmary-bridge` (it replaces an installed `firmary-link` package in

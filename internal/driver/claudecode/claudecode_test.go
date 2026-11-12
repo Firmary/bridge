@@ -267,3 +267,22 @@ func TestResponsesAreParagraphs(t *testing.T) {
 		t.Fatalf("text %q", got)
 	}
 }
+
+// TestResponsesWithoutDeltasAreParagraphs: with no message_start or deltas, two responses' assistant records are still
+// separate paragraphs, while two records of one response (the same id) are joined.
+func TestResponsesWithoutDeltasAreParagraphs(t *testing.T) {
+	var s streamState
+	var text strings.Builder
+	for _, l := range []string{
+		`{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Let me "}]}}`,
+		`{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"look."}]}}`,
+		`{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"Due Friday."}]}}`,
+	} {
+		for _, e := range s.line([]byte(l)) {
+			text.WriteString(e.Text)
+		}
+	}
+	if got := text.String(); got != "Let me look.\n\nDue Friday." {
+		t.Fatalf("text %q", got)
+	}
+}

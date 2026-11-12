@@ -261,8 +261,9 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 type streamState struct {
 	started        bool
 	deltaSeen      bool
-	answered       bool // text was sent
-	newMessage     bool // a later model response (after a tool call) began, so its text starts a new paragraph
+	answered       bool   // text was sent
+	newMessage     bool   // a later model response (after a tool call) began, so its text starts a new paragraph
+	messageID      string // the model response the last assistant record without deltas belonged to
 	assistantError string
 	result         *resultMsg
 }
@@ -304,6 +305,7 @@ type streamLine struct {
 		} `json:"delta"`
 	} `json:"event"`
 	Message struct {
+		ID      string `json:"id"`
 		Content []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -388,6 +390,12 @@ func (s *streamState) line(b []byte) []protocol.StreamEvent {
 		if seen {
 			return nil
 		}
+		// Without deltas, a record from a different response (or one with no id) is a later response, as a
+		// message_start would have said.
+		if m.Message.ID == "" || m.Message.ID != s.messageID {
+			s.newMessage = s.newMessage || s.answered
+		}
+		s.messageID = m.Message.ID
 		var out []protocol.StreamEvent
 		for _, c := range m.Message.Content {
 			if c.Type == "text" && c.Text != "" {
