@@ -234,7 +234,7 @@ func systemPromptText(l launch.Profile) string {
 	if l.SystemPrompt != "" {
 		return l.SystemPrompt
 	}
-	return prompt.Fallback(l.HasTool(launch.ToolWebSearch))
+	return prompt.Fallback(l.HasTool(launch.ToolWebSearch), l.HasTool(launch.ToolFirmary))
 }
 
 // prepare creates the profile and rewrites its config.toml and Firmary's system prompt file for the launch profile

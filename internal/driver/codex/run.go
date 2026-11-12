@@ -139,6 +139,7 @@ type streamState struct {
 	model     string
 	webSearch bool // the launch profile turned web search on, so its items are expected
 	firmary   bool // the launch profile turned Firmary's tools on, so calls to its MCP server are expected
+	answered  bool // an agent message was sent; the next one (after a tool call) starts a new paragraph
 	started   bool
 	threadID  string
 	completed bool
@@ -212,7 +213,12 @@ func (s *streamState) line(b []byte) []protocol.StreamEvent {
 		}
 		// An "error" item is a Codex warning (for example a feature that failed closed), not model output.
 		if m.Type == "item.completed" && m.Item.Type == "agent_message" && m.Item.Text != "" {
-			return []protocol.StreamEvent{protocol.TextDelta(m.Item.Text)}
+			text := m.Item.Text
+			if s.answered {
+				text = "\n\n" + text
+			}
+			s.answered = true
+			return []protocol.StreamEvent{protocol.TextDelta(text)}
 		}
 	case "turn.completed":
 		s.completed = true

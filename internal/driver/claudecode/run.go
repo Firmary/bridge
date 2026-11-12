@@ -134,7 +134,7 @@ func systemPromptText(l launch.Profile) string {
 	if l.SystemPrompt != "" {
 		return l.SystemPrompt
 	}
-	return prompt.Fallback(l.HasTool(launch.ToolWebSearch))
+	return prompt.Fallback(l.HasTool(launch.ToolWebSearch), l.HasTool(launch.ToolFirmary))
 }
 
 // writeSystemPrompt writes the turn's resolved system prompt to the profile (0600, rewritten every turn). It goes
@@ -256,6 +256,8 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 type streamState struct {
 	started        bool
 	deltaSeen      bool
+	answered       bool // text was sent
+	newMessage     bool // a later model response (after a tool call) began, so its text starts a new paragraph
 	assistantError string
 	result         *resultMsg
 }
@@ -336,6 +338,17 @@ func limitWindow(name string, utilization, resetsAt *float64) (protocol.LimitWin
 	return w, true
 }
 
+// text is a text delta of the answer. The first text of a model response after an earlier one's (an agent loop: text,
+// a tool call, then more text) starts a new paragraph, so the two never run together.
+func (s *streamState) text(t string) protocol.StreamEvent {
+	if s.newMessage {
+		t = "\n\n" + t
+		s.newMessage = false
+	}
+	s.answered = true
+	return protocol.TextDelta(t)
+}
+
 func (s *streamState) line(b []byte) []protocol.StreamEvent {
 	var m streamLine
 	if json.Unmarshal(b, &m) != nil {
@@ -348,9 +361,12 @@ func (s *streamState) line(b []byte) []protocol.StreamEvent {
 			return []protocol.StreamEvent{protocol.Start(m.Model)}
 		}
 	case "stream_event":
+		if m.Event.Type == "message_start" {
+			s.newMessage = s.answered
+		}
 		if m.Event.Type == "content_block_delta" && m.Event.Delta.Type == "text_delta" && m.Event.Delta.Text != "" {
 			s.deltaSeen = true
-			return []protocol.StreamEvent{protocol.TextDelta(m.Event.Delta.Text)}
+			return []protocol.StreamEvent{s.text(m.Event.Delta.Text)}
 		}
 	case "assistant":
 		// An assistant message with an error is Claude Code's own error text (for example "Not logged in"), not
@@ -370,7 +386,7 @@ func (s *streamState) line(b []byte) []protocol.StreamEvent {
 		var out []protocol.StreamEvent
 		for _, c := range m.Message.Content {
 			if c.Type == "text" && c.Text != "" {
-				out = append(out, protocol.TextDelta(c.Text))
+				out = append(out, s.text(c.Text))
 			}
 		}
 		return out

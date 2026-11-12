@@ -188,6 +188,8 @@ func TestFallbackPromptFollowsTools(t *testing.T) {
 		`{"schema":1}`:                                              prompt.Default,
 		`{"schema":1,"tools":[]}`:                                   prompt.Default,
 		`{"schema":1,"tools":["web_search"]}`:                       prompt.DefaultWebSearch,
+		`{"schema":1,"tools":["firmary"]}`:                          prompt.Fallback(false, true),
+		`{"schema":1,"tools":["web_search","firmary"]}`:             prompt.Fallback(true, true),
 		`{"schema":1,"systemPrompt":"Own.","tools":["web_search"]}`: "Own.",
 	} {
 		l, err := launch.Parse(doc)

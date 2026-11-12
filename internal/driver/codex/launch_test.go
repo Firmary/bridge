@@ -250,6 +250,8 @@ func TestFallbackPromptFollowsTools(t *testing.T) {
 		`{"schema":1}`:                                              prompt.Default,
 		`{"schema":1,"tools":[]}`:                                   prompt.Default,
 		`{"schema":1,"tools":["web_search"]}`:                       prompt.DefaultWebSearch,
+		`{"schema":1,"tools":["firmary"]}`:                          prompt.Fallback(false, true),
+		`{"schema":1,"tools":["web_search","firmary"]}`:             prompt.Fallback(true, true),
 		`{"schema":1,"systemPrompt":"Own.","tools":["web_search"]}`: "Own.",
 	} {
 		l, err := launch.Parse(doc)
@@ -431,5 +433,24 @@ func TestFirmaryToolItems(t *testing.T) {
 	onOther.line(other)
 	if !off.toolUsed || on.toolUsed || !onOther.toolUsed {
 		t.Fatalf("off: %v, on: %v, other server: %v", off.toolUsed, on.toolUsed, onOther.toolUsed)
+	}
+}
+
+// TestAgentMessagesAreParagraphs: an agent message after a Firmary tool call starts a new paragraph instead of running
+// on from the one before it.
+func TestAgentMessagesAreParagraphs(t *testing.T) {
+	s := streamState{firmary: true}
+	var text strings.Builder
+	for _, l := range []string{
+		`{"type":"item.completed","item":{"id":"a_1","type":"agent_message","text":"Let me look that up."}}`,
+		`{"type":"item.completed","item":{"id":"m_1","type":"mcp_tool_call","server":"firmary","tool":"x","status":"completed"}}`,
+		`{"type":"item.completed","item":{"id":"a_2","type":"agent_message","text":"It is due Friday."}}`,
+	} {
+		for _, e := range s.line([]byte(l)) {
+			text.WriteString(e.Text)
+		}
+	}
+	if got := text.String(); got != "Let me look that up.\n\nIt is due Friday." {
+		t.Fatalf("text %q", got)
 	}
 }

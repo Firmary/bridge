@@ -377,8 +377,13 @@ logic of its own.
 - **Never logged or put on a command line:** the token and the endpoint.
 - **`maxTurns`.** With `firmary` on, Claude Code gets `--max-turns` (the profile's, else 10), as for web search.
   Codex has no turn limit (§8).
-- **The fallback prompt** doesn't mention Firmary's tools. The server always sends a `systemPrompt` with tools on,
-  so it is never used for such a turn.
+- **The fallback prompt** (a profile with no `systemPrompt`; the server always sends one with tools on) adds the
+  same exception lines after the required block as firmary-os's resolver (`toolLine` in
+  `packages/adapters/src/ai-router/launch-profile.ts`), so it never says "You have no tools" on a turn that has them.
+  If firmary-os rewords `toolLine`, copy the words into `internal/driver/prompt/prompt.go`.
+- **Text after a tool call** starts a new paragraph: when the model writes, calls a Firmary tool and writes again,
+  the Link sends `\n\n` before the later text (Claude Code: the next `message_start`; Codex: the next
+  `agent_message`), so the server can keep joining `text_delta`s as they come.
 
 How each provider gets the tools (checked on the pinned binaries by `TestRealFirmaryTools` in each driver, against
 a stub provider API and a fake Firmary MCP server):
