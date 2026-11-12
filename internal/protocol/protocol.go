@@ -211,15 +211,18 @@ type LaunchCapabilities struct {
 
 // Turn asks the Link to run one turn. TurnID must equal the ticket's ticketId. Schema is the structured-output
 // JSON Schema sent as a JSON string; nil means absent. Profile is the turn's launch profile as JSON text
-// (internal/launch), bound by the ticket's profileHash; the Link refuses a turn without one.
+// (internal/launch), bound by the ticket's profileHash; the Link refuses a turn without one. Firmary is the optional
+// {url, accessToken} credential for Firmary's own MCP server, sent only when the profile turns the firmary tool on;
+// it is kept raw here so a malformed one refuses the turn (launch.TurnFirmary), not the connection. Never logged.
 type Turn struct {
-	Type    string  `json:"type"`
-	TurnID  string  `json:"turnId"`
-	Ticket  string  `json:"ticket"`
-	Context string  `json:"context"`
-	Prompt  string  `json:"prompt"`
-	Schema  *string `json:"schema,omitempty"`
-	Profile string  `json:"profile,omitempty"`
+	Type    string          `json:"type"`
+	TurnID  string          `json:"turnId"`
+	Ticket  string          `json:"ticket"`
+	Context string          `json:"context"`
+	Prompt  string          `json:"prompt"`
+	Schema  *string         `json:"schema,omitempty"`
+	Profile string          `json:"profile,omitempty"`
+	Firmary json.RawMessage `json:"firmary,omitempty"`
 }
 
 // PromptHash hashes the turn's decoded context, prompt and schema strings (not their raw JSON tokens).

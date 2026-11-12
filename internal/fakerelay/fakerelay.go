@@ -437,6 +437,17 @@ func (r *Relay) SendTurnProfile(c ticket.Claims, context, prompt, profile string
 		Prompt: prompt, Profile: profile})
 }
 
+// SendTurnFirmary is SendTurnProfile with the turn's firmary object: any JSON value (for example
+// map[string]string{"url": ..., "accessToken": ...}), sent as given.
+func (r *Relay) SendTurnFirmary(c ticket.Claims, context, prompt, profile string, firmary any) error {
+	b, err := json.Marshal(firmary)
+	if err != nil {
+		return err
+	}
+	return r.send(protocol.Turn{Type: protocol.TypeTurn, TurnID: c.TicketID, Ticket: ticket.Sign(r.TicketKey, c), Context: context,
+		Prompt: prompt, Profile: profile, Firmary: b})
+}
+
 // SendRaw sends any message.
 func (r *Relay) SendRaw(v any) error { return r.send(v) }
 

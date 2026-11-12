@@ -5,8 +5,10 @@
 //
 // This is the Link's hard ceiling. A profile can only choose among the named settings below, each with checked
 // values; each driver turns them into flags or config with its own code. No profile field is ever forwarded as a raw
-// flag, environment variable or config key, so nothing that runs on this computer (shell, files, local fetch, MCP,
-// hooks, other permission modes, other endpoints or keys) can be switched on remotely. Parse refuses the whole profile
+// flag, environment variable or config key, so nothing that runs on this computer (shell, files, local fetch, other MCP
+// servers, hooks, other permission modes, other endpoints or keys) can be switched on remotely. The one MCP server a
+// profile can turn on is Firmary's own (ToolFirmary), at an endpoint checked against the Link's environment
+// (TurnFirmary). Parse refuses the whole profile
 // on anything it doesn't know: it never runs a turn with part of the profile dropped, since a dropped part could be a
 // firm's locked instructions.
 package launch
@@ -32,12 +34,18 @@ const (
 	MaxTurns        = 10
 )
 
-// Tool names in the Link's catalog. v1 holds only provider-hosted web search, which runs on Anthropic's or OpenAI's
-// servers, never on this computer. Each driver maps every entry to its own fixed flags or config keys.
-const ToolWebSearch = "web_search"
+// Tool names in the Link's catalog. Each driver maps every entry to its own fixed flags or config keys.
+//   - ToolWebSearch is provider-hosted web search, which runs on Anthropic's or OpenAI's servers, never on this
+//     computer.
+//   - ToolFirmary is Firmary's own MCP server, reached over HTTPS with the turn's short-lived access token (Firmary).
+//     Firmary enforces the person's permissions and approvals on its side; nothing runs on this computer.
+const (
+	ToolWebSearch = "web_search"
+	ToolFirmary   = "firmary"
+)
 
 // Tools is the catalog, in the order the Link declares it.
-var Tools = []string{ToolWebSearch}
+var Tools = []string{ToolWebSearch, ToolFirmary}
 
 // Efforts are the provider-neutral effort levels.
 var Efforts = []string{"low", "medium", "high", "xhigh", "max"}

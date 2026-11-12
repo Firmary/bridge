@@ -240,6 +240,25 @@
           "type": "string",
           "minLength": 2,
           "maxLength": 200000
+        },
+        "firmary": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "maxLength": 300,
+              "pattern": "^https?:\\/\\/[A-Za-z0-9.-]+(?::\\d{1,5})?\\/api\\/mcp$"
+            },
+            "accessToken": {
+              "type": "string",
+              "pattern": "^fmcp_[A-Za-z0-9_-]{43}$"
+            }
+          },
+          "required": [
+            "url",
+            "accessToken"
+          ],
+          "additionalProperties": {}
         }
       },
       "required": [
