@@ -1,11 +1,15 @@
 **Beta and unsigned.** Firmary Bridge connects your own Claude or ChatGPT plan to Firmary. This build isn't signed by
 Apple or Microsoft yet, so your computer warns the first time you open it. A signed build is coming.
 
-**New in 0.3.5:** the Linux desktop package is now called `firmary-bridge` (`firmary-bridge_amd64.deb`, or
-`_arm64.deb` for Arm), and installing it replaces an installed `firmary-link` package in place. On Windows, Firmary
-Bridge no longer flashes console windows while it checks your Claude or ChatGPT sign-in. Updates are safer too: a
-copy only accepts downloads from this repo's own release of that version, and an update manifest is re-signed only
-after its existing signature checks out.
+**New in 0.3.6:** the assistant inside Firmary can now use Firmary itself. When your firm turns this on, a chat
+that runs through Firmary Bridge can look up and change the firm's records (clients, tasks, documents and more) with
+exactly your access, and every change waits for approval in Firmary first. Firmary gives each chat its own short-lived
+access that ends with that chat; it is never saved on your computer or written to the Bridge's log. Answers that
+come after a lookup now start a new paragraph instead of running on.
+
+**0.3.5** named the Linux desktop package `firmary-bridge` (it replaces an installed `firmary-link` package in
+place), stopped Firmary Bridge flashing console windows on Windows while it checks your sign-in, and made updates
+accept downloads only from this repo's own release of that version.
 
 **0.3.4** kept the first connection after pairing from dropping, and let a Claude sign-in started from Firmary finish
 with the code pasted into Firmary. **0.3.3** made the server line work on any 64-bit Linux, with or without systemd.
@@ -42,7 +46,6 @@ Once installed, Firmary Bridge updates itself quietly from this release's signed
 | `Firmary-Bridge-Setup.exe`                                                            | Windows 10 and 11 (x64 and Arm)                            |
 | `firmary-bridge_amd64.deb`, `firmary-bridge_arm64.deb`                                | Linux desktop (Debian, Ubuntu)                             |
 | `firmary-bridge_<version>_amd64.deb`, `firmary-bridge_<version>_arm64.deb`            | The same two, with the version in the name                 |
-| `firmary-link_amd64.deb`, `firmary-link_arm64.deb`                                    | The same two under their old names, for older links        |
 | `install.sh`, `firmary-link-linux-x64.tar.gz`, `firmary-link-linux-arm64.tar.gz`      | Linux server; the tarballs are what `install.sh` downloads |
 | `firmary-link-darwin-universal`, `firmary-link-linux-*`, `firmary-link-windows-*.exe` | The app on its own, used by updates                        |
 | `manifest.json`, `manifest.json.sig`                                                  | The signed update manifest                                 |

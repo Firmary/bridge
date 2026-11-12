@@ -20,9 +20,11 @@ what they show is Firmary Bridge.
 
 ## Status
 
-**Beta, unsigned.** Version 0.3.5 is the latest GitHub release: the Linux desktop package is named `firmary-bridge`,
-Windows no longer flashes console windows during status checks, and updates only accept downloads from their own
-release and re-sign a manifest only after checking its signature. 0.3.4 kept the first connection after pairing from
+**Beta, unsigned.** Version 0.3.6 is the latest GitHub release: it gives a turn Firmary's own tools when Firmary
+turns them on, so the assistant inside Firmary can look up and change the firm's records with exactly the person's
+access, with every change waiting for approval in Firmary. 0.3.5 named the Linux desktop package `firmary-bridge`, stopped Windows
+flashing console windows during status checks, and made updates accept downloads only from their own release and
+re-sign a manifest only after checking its signature. 0.3.4 kept the first connection after pairing from
 dropping while a provider's status check is slow, and let a Claude sign-in started from Firmary finish with the code
 Claude's page shows, pasted into Firmary. 0.3.3 made the server line work on any Linux, systemd or not, and keep
 running after pairing. 0.3.2 brought the Firmary Bridge name; 0.3.1 made Enter pairing code… open the code box on
@@ -46,9 +48,8 @@ releases, so `https://github.com/Firmary/bridge/releases/latest/download/<file>`
 | `manifest.json`, `manifest.json.sig`, `checksums.txt`                      | The signed update manifest and the SHA-256s |
 
 The Linux packages carry the Firmary Bridge name from 0.3.5; 0.3.4 and before named them `firmary-link_*.deb`. 0.3.5
-also carries `firmary-link_amd64.deb` and `firmary-link_arm64.deb`, so links to the old names keep working while
-firmary.app moves to the new ones. The `Firmary-Link.dmg` and `Firmary-Link-Setup.exe` copies stopped with 0.3.4;
-older releases keep theirs.
+also carried copies under those old names while firmary.app moved to the new ones; 0.3.6 stops them, as the
+`Firmary-Link.dmg` and `Firmary-Link-Setup.exe` copies stopped with 0.3.4. Older releases keep theirs.
 
 - **Mac**: open the dmg, drag **Firmary Bridge** to **Applications** and open it. The first time macOS blocks it: open
   **System Settings › Privacy & Security** and click **Open Anyway**.

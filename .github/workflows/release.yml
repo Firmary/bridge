@@ -193,11 +193,8 @@ jobs:
             [ -f "dist/$f" ] || { echo "::error::missing dist/$f"; exit 1; }
           done
           # The Linux packages under names without the version, so firmary.app can link the file itself, as for the dmg.
-          # firmary-link_<arch>.deb is the name 0.3.4 used, which firmary.app links until it moves to firmary-bridge_*:
-          # drop those two copies in the first release after that move is in production.
           for arch in amd64 arm64; do
             cp "dist/firmary-bridge_${VERSION}_${arch}.deb" "dist/firmary-bridge_${arch}.deb"
-            cp "dist/firmary-bridge_${VERSION}_${arch}.deb" "dist/firmary-link_${arch}.deb"
           done
           ls -la dist
       - name: Sign the update manifest
