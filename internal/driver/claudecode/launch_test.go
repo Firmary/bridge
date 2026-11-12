@@ -240,7 +240,12 @@ func TestRunWithFirmaryTools(t *testing.T) {
 			t.Fatal(err)
 		}
 		return d.Run(context.Background(), prof, driver.Turn{ID: "t1", Model: "claude-sonnet-4-5", Prompt: testkit.PromptCanary,
-			MaxOutputTokens: 1000, Launch: l, Firmary: f}, func(protocol.StreamEvent) {})
+			MaxOutputTokens: 1000, Launch: l, Firmary: f}, func(e protocol.StreamEvent) {
+			// The helper frees the turn slot at the terminal event, so the next turn may write its config from then on.
+			if _, err := os.Stat(mcpConfigFile(prof)); (e.T == protocol.EvDone || e.T == protocol.EvError) && !os.IsNotExist(err) {
+				t.Errorf("the MCP config was still there at %s: %v", e.T, err)
+			}
+		})
 	}
 
 	if err := run(`{"schema":1,"tools":["web_search","firmary"],"maxTurns":10}`, cred); err != nil {

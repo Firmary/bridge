@@ -163,7 +163,11 @@ func input(t driver.Turn) string {
 
 // Run runs one turn with the pinned Claude Code under the profile.
 func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit func(protocol.StreamEvent)) error {
+	// removeMCP removes the turn's MCP config (its token) once Claude Code no longer needs it. It runs before the
+	// terminal event goes out: the helper frees the turn slot then, so the next turn may already be writing its own.
+	removeMCP := func() {}
 	fail := func(class, pattern string) error {
+		removeMCP()
 		emit(protocol.Error(class, pattern))
 		return &driver.Failure{Class: class, Pattern: pattern}
 	}
@@ -192,7 +196,7 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 		return fail(protocol.ClassPolicy, string(launch.ReasonFirmaryInvalid))
 	}
 	if t.Firmary != nil {
-		defer os.Remove(mcpConfigFile(p))
+		removeMCP = func() { _ = os.Remove(mcpConfigFile(p)) }
 		if err := writeMCPConfig(p, *t.Firmary); err != nil {
 			return fail(protocol.ClassFatal, "profile_unavailable")
 		}
@@ -228,6 +232,7 @@ func (d *Driver) Run(ctx context.Context, p driver.Profile, t driver.Turn, emit 
 	}
 	_, _ = io.Copy(io.Discard, stdout)
 	waitErr := cmd.Wait()
+	removeMCP()
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fail(protocol.ClassTransient, "turn_timeout")
