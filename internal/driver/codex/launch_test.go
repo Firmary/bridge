@@ -272,6 +272,8 @@ func TestStatusDuringTurnKeepsTurnFiles(t *testing.T) {
 	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 	bin := "#!/bin/sh\n" +
 		`if [ "$1" = "login" ]; then echo 'Logged in using ChatGPT' >&2; exit 0; fi` + "\n" +
+		`if [ "$1" = "app-server" ]; then printf '{"id":1,"result":{}}\n'; read l; read l; read l` + "\n" +
+		`  printf '{"id":2,"result":{"account":null,"requiresOpenaiAuth":true}}\n'; cat > /dev/null; exit 0; fi` + "\n" +
 		"cat > /dev/null\ntouch " + q(filepath.Join(dump, "started")) + "\nsleep 1\n" +
 		`cp "$CODEX_HOME/config.toml" ` + q(filepath.Join(dump, "config.toml")) + "\n" +
 		`cp "$CODEX_HOME/firmary-system-prompt.md" ` + q(filepath.Join(dump, "prompt.md")) + "\n" +

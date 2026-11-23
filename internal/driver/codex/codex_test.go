@@ -6,13 +6,13 @@ import (
 	"archive/tar"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/driver/prompt"
@@ -287,30 +287,81 @@ func TestSignInScannerIgnoresOtherLinks(t *testing.T) {
 	}
 }
 
-// TestStatusNeedsChatGPTLogin: an API-key login, or a ChatGPT login whose claims aren't machine names or a UUID,
-// reports signed out or reports nothing beyond signed in.
-func TestStatusNeedsChatGPTLogin(t *testing.T) {
-	home := t.TempDir()
-	write := func(s string) { os.WriteFile(filepath.Join(home, "auth.json"), []byte(s), 0o600) }
-	write(`{"auth_mode":"apikey","OPENAI_API_KEY":"` + testkit.EnvCanary + `"}`)
-	if _, _, _, ok := readAccount(home); ok {
-		t.Error("API key login accepted")
+// TestStatusAsksCodexForAccount: the plan, workspace and email come from Codex's own app-server (account/read, no
+// token refresh), with the Link named as itself, and app-server runs again only when Codex's sign-in file changes.
+func TestStatusAsksCodexForAccount(t *testing.T) {
+	d, dump := installFake(t, []string{"PATH=/usr/bin:/bin"})
+	d.clientVersion = "0.3.7"
+	ctx := context.Background()
+	prof := driver.Profile{UserID: "u1", Dir: t.TempDir()}
+	log := func() string { b, _ := os.ReadFile(filepath.Join(dump, "app-server")); return string(b) }
+	if st, err := d.Status(ctx, prof); err != nil || st.SignedIn {
+		t.Fatalf("status before sign-in %+v %v", st, err)
 	}
-	write(strings.Replace(testkit.CodexAuthJSON("business"), `"OPENAI_API_KEY":null`, `"OPENAI_API_KEY":"sk-x"`, 1))
-	if _, _, _, ok := readAccount(home); ok {
-		t.Error("ChatGPT login with an API key accepted")
+	if log() != "" {
+		t.Fatal("app-server ran for a signed-out profile")
 	}
-	write(testkit.CodexAuthJSON("Business Plan"))
-	if plan, acct, email, ok := readAccount(home); !ok || plan != "" || acct != testkit.CodexAccountID || email != testkit.EmailCanary {
-		t.Errorf("got %q %q %q %v", plan, acct, email, ok)
+	if err := d.SignIn(ctx, prof, driver.SignInDeviceLink, driver.SignInUI{}); err != nil {
+		t.Fatal(err)
 	}
-	// A token with the email only in the profile claim, as Codex also reads it.
-	b64 := base64.RawURLEncoding.EncodeToString
-	claims := `{"https://api.openai.com/profile":{"email":"` + testkit.EmailCanary + `"},"https://api.openai.com/auth":{"chatgpt_plan_type":"plus"}}`
-	write(`{"auth_mode":"chatgpt","OPENAI_API_KEY":null,"tokens":{"id_token":"` + b64([]byte(`{"alg":"none"}`)) + "." +
-		b64([]byte(claims)) + `.c2ln"}}`)
-	if _, _, email, ok := readAccount(home); !ok || email != testkit.EmailCanary {
-		t.Errorf("profile-claim email: got %q %v", email, ok)
+	want := driver.ProviderStatus{Installed: testVersion, SignedIn: true, AccountType: "business", OrgID: testkit.CodexAccountID,
+		AccountEmail: testkit.EmailCanary}
+	for range 2 {
+		if st, err := d.Status(ctx, prof); err != nil || st != want {
+			t.Fatalf("status %+v %v", st, err)
+		}
+	}
+	got := log()
+	if n := strings.Count(got, "start app-server"); n != 1 {
+		t.Fatalf("app-server ran %d times for one sign-in:\n%s", n, got)
+	}
+	for _, w := range []string{`"clientInfo":{"name":"firmary-link","title":"Firmary Bridge","version":"0.3.7"}`,
+		`"capabilities":{"experimentalApi":true}`, `{"method":"initialized"}`,
+		`{"id":2,"method":"account/read","params":{"refreshToken":false}}`, `-c forced_login_method="chatgpt"`} {
+		if !strings.Contains(got, w) {
+			t.Errorf("app-server log missing %s:\n%s", w, got)
+		}
+	}
+	// Codex rewrote its sign-in (a token refresh or another account): ask again.
+	later := time.Now().Add(time.Minute)
+	if err := os.Chtimes(filepath.Join(prof.Dir, "home", "auth.json"), later, later); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := d.Status(ctx, prof); err != nil || st != want {
+		t.Fatalf("status %+v %v", st, err)
+	}
+	if n := strings.Count(log(), "start app-server"); n != 2 {
+		t.Fatalf("app-server ran %d times, want 2 after the sign-in changed", n)
+	}
+	if err := d.SignOut(ctx, prof); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := d.Status(ctx, prof); err != nil || st.SignedIn || st.AccountEmail != "" {
+		t.Fatalf("status after sign-out %+v %v", st, err)
+	}
+}
+
+// TestParseAccount: only a ChatGPT account counts, and a plan type or workspace id of the wrong form is left out.
+func TestParseAccount(t *testing.T) {
+	ws := `"workspaceRouting":{"chatgptAccountId":"` + testkit.CodexAccountID + `","backendOrigin":"https://chatgpt.com","accountRoutingOverride":"NO_CONSTRAINT"}`
+	for _, c := range []struct {
+		name, result string
+		want         account
+		ok           bool
+	}{
+		{"chatgpt", `{"account":{"type":"chatgpt","email":"` + testkit.EmailCanary + `","planType":"team"},"requiresOpenaiAuth":true,` + ws + `}`,
+			account{"team", testkit.CodexAccountID, testkit.EmailCanary}, true},
+		{"no account", `{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":null}`, account{}, false},
+		{"api key", `{"account":{"type":"apiKey"},"requiresOpenaiAuth":true}`, account{}, false},
+		{"bedrock", `{"account":{"type":"amazonBedrock"},"requiresOpenaiAuth":false}`, account{}, false},
+		{"odd values", `{"account":{"type":"chatgpt","email":null,"planType":"Business Plan"},"requiresOpenaiAuth":true,` +
+			`"workspaceRouting":{"chatgptAccountId":"org-not-a-uuid"}}`, account{}, true},
+		{"no workspace", `{"account":{"type":"chatgpt","email":"x","planType":"plus"},"requiresOpenaiAuth":true}`, account{planType: "plus"}, true},
+		{"not json", `nope`, account{}, false},
+	} {
+		if got, ok := parseAccount([]byte(c.result)); got != c.want || ok != c.ok {
+			t.Errorf("%s: got %+v %v, want %+v %v", c.name, got, ok, c.want, c.ok)
+		}
 	}
 }
 

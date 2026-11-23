@@ -252,7 +252,10 @@ func CodexAuthJSON(planType string) string {
 
 // FakeCodex returns a POSIX shell script standing in for `codex`. `login` prints a sign-in link (and, with
 // --device-auth, DeviceCode) to stderr the way Codex 0.166.0 does, then writes CodexAuthJSON("business") into
-// CODEX_HOME; `login status` reports from that file; `logout` removes it. `exec` records its environment, arguments,
+// CODEX_HOME; `login status` reports from that file; `logout` removes it. `app-server` answers initialize and
+// account/read the way Codex 0.166.0 does, each after a notification: a "business" ChatGPT account in the
+// CodexAccountID workspace with EmailCanary while that file exists, else no account. Each app-server run appends
+// "start <arguments>" and then every message it receives to dumpDir/app-server. `exec` records its environment, arguments,
 // working directory and stdin under dumpDir, writes a canary to stderr, and prints a JSONL turn that contains
 // OutputCanary. A prompt containing SlowPrompt sleeps for a minute first.
 func FakeCodex(dumpDir string) []byte {
@@ -277,6 +280,21 @@ func FakeCodex(dumpDir string) []byte {
 	b.WriteString("  esac\n  sleep 0.2\n")
 	b.WriteString(`  printf '%s' ` + q(CodexAuthJSON("business")) + ` > "$CODEX_HOME/auth.json"; exit 0` + "\nfi\n")
 	b.WriteString(`if [ "$1" = "logout" ]; then rm -f "$CODEX_HOME/auth.json"; exit 0; fi` + "\n")
+	as := q(filepath.Join(dumpDir, "app-server"))
+	signedIn := `{"id":%s,"result":{"account":{"type":"chatgpt","email":"` + EmailCanary + `","planType":"business"},` +
+		`"requiresOpenaiAuth":true,"workspaceRouting":{"chatgptAccountId":"` + CodexAccountID +
+		`","backendOrigin":"https://chatgpt.com","accountRoutingOverride":"NO_CONSTRAINT"}}}\n`
+	b.WriteString(`if [ "$1" = "app-server" ]; then` + "\n")
+	b.WriteString(`  printf 'start %s\n' "$*" >> ` + as + "\n")
+	b.WriteString("  while IFS= read -r line; do\n")
+	b.WriteString(`    printf '%s\n' "$line" >> ` + as + "\n")
+	b.WriteString(`    id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')` + "\n")
+	b.WriteString(`    printf '{"method":"remoteControl/status/changed","params":{"status":"disabled"}}\n'` + "\n")
+	b.WriteString(`    case "$line" in` + "\n")
+	b.WriteString(`    *'"method":"initialize"'*) printf '{"id":%s,"result":{"userAgent":"fake"}}\n' "$id";;` + "\n")
+	b.WriteString(`    *'"method":"account/read"'*) if [ -f "$CODEX_HOME/auth.json" ]; then printf ` + q(signedIn) + ` "$id"; else` + "\n")
+	b.WriteString(`      printf '{"id":%s,"result":{"account":null,"requiresOpenaiAuth":true,"workspaceRouting":null}}\n' "$id"; fi;;` + "\n")
+	b.WriteString("    esac\n  done\n  exit 0\nfi\n")
 	b.WriteString("env > " + q(filepath.Join(dumpDir, "env")) + "\n")
 	b.WriteString(`for a in "$@"; do printf '[%s]\n' "$a"; done > ` + q(filepath.Join(dumpDir, "args")) + "\n")
 	b.WriteString("pwd > " + q(filepath.Join(dumpDir, "cwd")) + "\n")

@@ -20,7 +20,8 @@ what they show is Firmary Bridge.
 
 ## Status
 
-**Beta, unsigned.** Version 0.3.6 is the latest GitHub release: it gives a turn Firmary's own tools when Firmary
+**Beta, unsigned.** Version 0.3.7 is the latest GitHub release: it gets the ChatGPT plan, workspace and email from
+Codex itself (`account/read`) instead of reading Codex's sign-in file. 0.3.6 gave a turn Firmary's own tools when Firmary
 turns them on, so the assistant inside Firmary can look up and change the firm's records with exactly the person's
 access, with every change waiting for approval in Firmary. 0.3.5 named the Linux desktop package `firmary-bridge`, stopped Windows
 flashing console windows during status checks, and made updates accept downloads only from their own release and
@@ -147,8 +148,9 @@ from a private config file the turn deletes), a cleaned environment, and Firmary
 - **`hello`.** Reports `kind` (`desktop` for the app, `server` for the always-on service or any run without a
   desktop session; also in `pairing_reveal.device`) and both provider apps: `signedIn`, `accountType` (Claude: the
   Claude plan; Codex: the ChatGPT plan type), `orgId` (the Claude organisation or the ChatGPT workspace),
-  `accountEmail` (from `claude auth status` or the ChatGPT id token; for the person's own Connections page, never
-  logged, omitted when unknown) and `pinnedVersion`, and is sent again after a sign-in or sign-out. The status
+  `accountEmail` (for the person's own Connections page, never logged, omitted when unknown) and `pinnedVersion`,
+  and is sent again after a sign-in or sign-out. The apps report these themselves: `claude auth status`, and Codex's
+  `account/read` on `codex app-server` (the Link never opens Codex's `auth.json`). The status
   checks run side by side and hello waits for them at most 5 seconds (the relay allows 30): a check still running
   is reported as its last result (signed out if none), and a fresh hello follows once it finishes with a different
   answer.

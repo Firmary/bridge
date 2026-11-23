@@ -5,7 +5,6 @@ package codex
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -21,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Firmary/bridge/internal/brand"
 	"github.com/Firmary/bridge/internal/driver"
 	"github.com/Firmary/bridge/internal/driver/prompt"
 	"github.com/Firmary/bridge/internal/launch"
@@ -44,9 +44,13 @@ type Driver struct {
 	extraConfig []string
 	extraEnv    []string
 
-	mu      sync.Mutex
-	version string
-	binary  string
+	// clientVersion is the Link's own version, sent in app-server's clientInfo.
+	clientVersion string
+
+	mu       sync.Mutex
+	version  string
+	binary   string
+	accounts map[string]accountEntry // by profile directory; see account
 
 	// locks holds one mutex per profile directory. A turn holds its profile's from writing its prompt and config
 	// until Codex exits, so nothing rewrites them under it (see prepareIdle).
@@ -81,6 +85,9 @@ func WithRelease(baseURL string, c *http.Client) Option {
 		}
 	}
 }
+
+// WithClientVersion sets the Link version Codex's app-server is told (default "0.0.0-dev", as an unreleased build).
+func WithClientVersion(v string) Option { return func(d *Driver) { d.clientVersion = v } }
 
 // WithPlatform overrides the detected platform.
 func WithPlatform(p string) Option { return func(d *Driver) { d.platform = p } }
@@ -130,7 +137,7 @@ func (d *Driver) managed() bool {
 
 // New returns a driver that installs into root (for example <data>/providers/codex).
 func New(root string, opts ...Option) (*Driver, error) {
-	d := &Driver{root: root, baseURL: ReleaseBaseURL, platform: Platform(), environ: os.Environ,
+	d := &Driver{root: root, baseURL: ReleaseBaseURL, platform: Platform(), environ: os.Environ, clientVersion: "0.0.0-dev",
 		http: &http.Client{Timeout: 30 * time.Minute}, managedPaths: ManagedPaths()}
 	for _, o := range opts {
 		o(d)
@@ -296,75 +303,159 @@ func (d *Driver) withConfig(p driver.Profile, sub ...string) []string {
 	return append(sub, configArgs(args)...)
 }
 
-// authFile is the subset of CODEX_HOME/auth.json the Link reads. Tokens are never kept: only the id_token's plan
-// type, ChatGPT account id and email claims are decoded. The email is for hello's accountEmail (design 5877e3252806:
-// the person's own Connections page) and is never logged.
-type authFile struct {
-	AuthMode     string  `json:"auth_mode"`
-	OpenAIAPIKey *string `json:"OPENAI_API_KEY"`
-	Tokens       *struct {
-		IDToken string `json:"id_token"`
-	} `json:"tokens"`
-}
+// The Link names itself to Codex's app-server as what it is (initialize's clientInfo, which Codex puts in its
+// User-Agent), the way T3 Code sends "T3 Code": never another app's name.
+const (
+	clientName  = brand.Command
+	clientTitle = brand.Name
+)
 
-type idClaims struct {
-	Email string `json:"email"`
-	// Profile is where Codex also looks for the email when the top-level claim is absent.
-	Profile struct {
-		Email string `json:"email"`
-	} `json:"https://api.openai.com/profile"`
-	Auth struct {
-		PlanType  string `json:"chatgpt_plan_type"`
-		AccountID string `json:"chatgpt_account_id"`
-	} `json:"https://api.openai.com/auth"`
+// account is who is signed in to a profile, as Codex itself reports it.
+type account struct{ planType, orgID, email string }
+
+// accountEntry is a profile's last account/read answer, with the Codex binary and the size and time of the sign-in
+// file it was read under. The file is only stat'ed, never opened: Codex rewrites it on every sign-in and token
+// refresh, which is when the Link asks again (T3 Code watches the same file for the same reason). Status runs before
+// every turn, and starting app-server each time would add most of a second to it.
+type accountEntry struct {
+	bin   string
+	size  int64
+	mtime time.Time
+	acct  account
+	ok    bool
 }
 
 // accountIDRe is the form of a ChatGPT account (workspace) id. Anything else is not reported, so it can never match
 // a ticket's providerOrgIds.
 var accountIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// readAccount returns the plan type, account id and email of a ChatGPT login in the profile, or ok=false for anything
-// else (no file, an API key, another auth mode, an unreadable token).
-func readAccount(home string) (planType, accountID, email string, ok bool) {
-	f, err := os.Open(filepath.Join(home, "auth.json"))
+// signInFile is where Codex keeps the profile's sign-in (cli_auth_credentials_store="file"). The Link never reads it.
+func signInFile(p driver.Profile) string { return filepath.Join(codexHome(p), "auth.json") }
+
+// account returns the profile's account, from the cache while the sign-in file is unchanged, else from Codex.
+func (d *Driver) account(ctx context.Context, bin string, p driver.Profile) (account, bool, error) {
+	info, statErr := os.Stat(signInFile(p))
+	d.mu.Lock()
+	e, hit := d.accounts[p.Dir]
+	d.mu.Unlock()
+	if hit && statErr == nil && e.bin == bin && e.size == info.Size() && e.mtime.Equal(info.ModTime()) {
+		return e.acct, e.ok, nil
+	}
+	acct, ok, err := d.readAccount(ctx, bin, p)
 	if err != nil {
-		return "", "", "", false
+		return account{}, false, err
 	}
-	defer f.Close()
-	var a authFile
-	if json.NewDecoder(io.LimitReader(f, 1<<20)).Decode(&a) != nil {
-		return "", "", "", false
+	// Stat'ed before asking: if Codex rewrote the file in between, the next Status sees a new time and asks again.
+	if statErr == nil {
+		d.mu.Lock()
+		if d.accounts == nil {
+			d.accounts = map[string]accountEntry{}
+		}
+		d.accounts[p.Dir] = accountEntry{bin: bin, size: info.Size(), mtime: info.ModTime(), acct: acct, ok: ok}
+		d.mu.Unlock()
 	}
-	if a.AuthMode != "chatgpt" || (a.OpenAIAPIKey != nil && *a.OpenAIAPIKey != "") || a.Tokens == nil {
-		return "", "", "", false
-	}
-	parts := strings.Split(a.Tokens.IDToken, ".")
-	if len(parts) != 3 {
-		return "", "", "", false
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	return acct, ok, nil
+}
+
+// forgetAccount drops the profile's cached account, so the next Status asks Codex.
+func (d *Driver) forgetAccount(p driver.Profile) {
+	d.mu.Lock()
+	delete(d.accounts, p.Dir)
+	d.mu.Unlock()
+}
+
+// rpcMessage is one JSON-RPC message from app-server: a response (id with result or error), a notification (method
+// only) or a request to the client (id and method).
+type rpcMessage struct {
+	ID     json.RawMessage `json:"id"`
+	Method string          `json:"method"`
+	Result json.RawMessage `json:"result"`
+	Error  json.RawMessage `json:"error"`
+}
+
+// readAccount asks the profile's own Codex who is signed in, the way T3 Code does: `codex app-server` over stdio,
+// initialize, then account/read without a token refresh. Codex answers from its own sign-in, and looks up the
+// workspace with OpenAI itself; the Link never opens auth.json or sees a token. ok is false for anything but a
+// ChatGPT sign-in (an API key, no sign-in). Nothing Codex says beyond the answer is kept, and errors carry none of it.
+func (d *Driver) readAccount(ctx context.Context, bin string, p driver.Profile) (acct account, ok bool, err error) {
+	cmd := d.command(ctx, bin, p, d.withConfig(p, "app-server")...)
+	in, err := cmd.StdinPipe()
 	if err != nil {
-		return "", "", "", false
+		return account{}, false, err
 	}
-	var c idClaims
-	if json.Unmarshal(payload, &c) != nil {
-		return "", "", "", false
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return account{}, false, err
 	}
-	if protocol.MachineNameRe.MatchString(c.Auth.PlanType) {
-		planType = c.Auth.PlanType
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		return account{}, false, errors.New("app-server did not start")
 	}
-	if accountIDRe.MatchString(c.Auth.AccountID) {
-		accountID = c.Auth.AccountID
+	// Closing stdin ends app-server; Wait reaps it (the context's cancel kills it if it hangs).
+	defer func() { in.Close(); _ = cmd.Wait() }()
+	enc, dec := json.NewEncoder(in), json.NewDecoder(out)
+	send := func(m map[string]any) error { return enc.Encode(m) }
+	if err := send(map[string]any{"method": "initialize", "id": 1, "params": map[string]any{
+		"clientInfo": map[string]any{"name": clientName, "title": clientTitle, "version": d.clientVersion},
+		// The workspace (workspaceRouting) is an experimental field of account/read.
+		"capabilities": map[string]any{"experimentalApi": true},
+	}}); err != nil {
+		return account{}, false, errors.New("app-server closed")
 	}
-	email = c.Email
-	if email == "" {
-		email = c.Profile.Email
+	for {
+		var m rpcMessage
+		if err := dec.Decode(&m); err != nil {
+			return account{}, false, errors.New("app-server ended before answering")
+		}
+		if m.ID == nil || m.Method != "" {
+			continue // a notification, or a request to the Link, which account/read never makes
+		}
+		if m.Error != nil && string(m.Error) != "null" {
+			return account{}, false, errors.New("account/read failed")
+		}
+		switch string(m.ID) {
+		case "1":
+			if send(map[string]any{"method": "initialized"}) != nil ||
+				send(map[string]any{"method": "account/read", "id": 2, "params": map[string]any{"refreshToken": false}}) != nil {
+				return account{}, false, errors.New("app-server closed")
+			}
+		case "2":
+			acct, ok = parseAccount(m.Result)
+			return acct, ok, nil
+		}
 	}
-	return planType, accountID, driver.CleanEmail(email), true
+}
+
+// parseAccount reads account/read's answer (Codex 0.166.0's GetAccountResponse, experimental fields on). Only a
+// ChatGPT account counts. The plan type must be a machine name and the workspace id a UUID, else they are left out.
+func parseAccount(result json.RawMessage) (account, bool) {
+	var r struct {
+		Account *struct {
+			Type     string `json:"type"`
+			Email    string `json:"email"`
+			PlanType string `json:"planType"`
+		} `json:"account"`
+		WorkspaceRouting *struct {
+			ChatgptAccountID string `json:"chatgptAccountId"`
+		} `json:"workspaceRouting"`
+	}
+	if json.Unmarshal(result, &r) != nil || r.Account == nil || r.Account.Type != "chatgpt" {
+		return account{}, false
+	}
+	var a account
+	if protocol.MachineNameRe.MatchString(r.Account.PlanType) {
+		a.planType = r.Account.PlanType
+	}
+	if r.WorkspaceRouting != nil && accountIDRe.MatchString(r.WorkspaceRouting.ChatgptAccountID) {
+		a.orgID = r.WorkspaceRouting.ChatgptAccountID
+	}
+	a.email = driver.CleanEmail(r.Account.Email)
+	return a, true
 }
 
 // Status runs `codex login status` in the profile. Signed in means Codex itself says "Logged in using ChatGPT" and
-// the profile holds a ChatGPT login with no API key; anything else reports signed out.
+// its account/read reports a ChatGPT account; anything else reports signed out. The plan, workspace and email are
+// account/read's (for hello's accountEmail, design 5877e3252806: the person's own Connections page; never logged).
 func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderStatus, error) {
 	managed := d.managed()
 	version, bin := d.Installed()
@@ -400,11 +491,14 @@ func (d *Driver) Status(ctx context.Context, p driver.Profile) (driver.ProviderS
 		}
 		return st, nil
 	}
-	plan, account, email, ok := readAccount(codexHome(p))
+	acct, ok, err := d.account(ctx, bin, p)
+	if err != nil {
+		return st, err
+	}
 	if !ok {
 		return st, nil
 	}
-	st.SignedIn, st.AccountType, st.OrgID, st.AccountEmail = true, plan, account, email
+	st.SignedIn, st.AccountType, st.OrgID, st.AccountEmail = true, acct.planType, acct.orgID, acct.email
 	return st, nil
 }
 
@@ -504,12 +598,13 @@ func (d *Driver) SignIn(ctx context.Context, p driver.Profile, kind string, ui d
 	case runErr != nil:
 		return &driver.Failure{Class: protocol.ClassAuth, Pattern: "signin_failed"}
 	}
+	d.forgetAccount(p)
 	st, err := d.Status(context.WithoutCancel(ctx), p)
 	if err != nil || !st.SignedIn {
 		return &driver.Failure{Class: protocol.ClassAuth, Pattern: "not_signed_in"}
 	}
 	// The sign-in stays readable by this account only.
-	_ = os.Chmod(filepath.Join(codexHome(p), "auth.json"), 0o600)
+	_ = os.Chmod(signInFile(p), 0o600)
 	return nil
 }
 
@@ -527,6 +622,7 @@ func (d *Driver) SignOut(ctx context.Context, p driver.Profile) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
+	d.forgetAccount(p)
 	cmd := d.command(ctx, bin, p, d.withConfig(p, "logout")...)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if err := cmd.Run(); err != nil {
