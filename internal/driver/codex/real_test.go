@@ -55,6 +55,11 @@ func TestRealPinnedCodex(t *testing.T) {
 	if st.Installed != BuiltInPin.Version || st.SignedIn != signedIn {
 		t.Fatalf("status %+v", st)
 	}
+	// The real app-server takes the Link's handshake and answers account/read (Status skips it when signed out).
+	_, bin := d.Installed()
+	if _, ok, err := d.readAccount(ctx, bin, prof); err != nil || ok != signedIn {
+		t.Fatalf("account/read: ok %v, %v", ok, err)
+	}
 
 	var events []protocol.StreamEvent
 	err = d.Run(ctx, prof, driver.Turn{ID: "real-1", Model: "gpt-5.5", Prompt: "Reply with the single word: pong",

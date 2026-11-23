@@ -150,7 +150,7 @@ func Open(o Options) (*Agent, error) {
 		log.Close()
 		return nil, err
 	}
-	if a.Codex, err = codex.New(filepath.Join(a.Root, "providers", codex.ID)); err != nil {
+	if a.Codex, err = codex.New(filepath.Join(a.Root, "providers", codex.ID), codex.WithClientVersion(o.Version)); err != nil {
 		log.Close()
 		return nil, err
 	}

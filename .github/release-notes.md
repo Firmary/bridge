@@ -1,7 +1,11 @@
 **Beta and unsigned.** Firmary Bridge connects your own Claude or ChatGPT plan to Firmary. This build isn't signed by
 Apple or Microsoft yet, so your computer warns the first time you open it. A signed build is coming.
 
-**New in 0.3.6:** the assistant inside Firmary can now use Firmary itself. When your firm turns this on, a chat
+**New in 0.3.7:** Firmary Bridge now asks Codex which ChatGPT account is signed in (your plan, workspace and email)
+instead of opening Codex's sign-in file to find out. Your sign-in stays with Codex and the Bridge never sees it,
+the same way Claude Code already tells the Bridge who is signed in. Nothing changes for you: you stay signed in.
+
+**0.3.6:** the assistant inside Firmary can now use Firmary itself. When your firm turns this on, a chat
 that runs through Firmary Bridge can look up and change the firm's records (clients, tasks, documents and more) with
 exactly your access, and every change waits for approval in Firmary first. Firmary gives each chat its own short-lived
 access that ends with that chat. It stays on your computer only while the chat runs (for Claude, in a private file
