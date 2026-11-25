@@ -14,8 +14,9 @@ review:
   # The review rules, shared with RoboRev.
   instructions_files: [REVIEW.md]
   paths:
-    # Docs and generated files are not reviewed.
-    exclude: ["*.md", "**/*.md", "bin/**", "dist/**", "cmd/firmary-link/rsrc_windows_*.syso", "internal/protocol/testdata/**", "go.sum"]
+    # Docs and generated files are not reviewed. "*.md" is the root's docs only; the system prompts in
+    # internal/driver/prompt/*.md are product and are reviewed.
+    exclude: ["*.md", "bin/**", "dist/**", "cmd/firmary-link/rsrc_windows_*.syso", "internal/protocol/testdata/**", "go.sum"]
 
 # # The oldest openqodex that may read this file, such as 0.9.0; an older one stops with exit 2 and names the version it needs.
 # min_version: null

@@ -1,8 +1,8 @@
 # Reviewing Firmary Bridge (bridge)
 
 What a reviewer of this repo must know. RoboRev reads this file (its `REVIEW.md` fallback) and OpenQodex quotes it
-(`review.instructions_files`). The repo has no AGENTS.md; the rules come from README.md (sections named below) and
-SCHEMA-CHANGES.md.
+(`review.instructions_files`). The rules come from README.md (sections named below) and SCHEMA-CHANGES.md; AGENTS.md
+holds only the OpenQodex steps agents follow before a push.
 
 ## Flag these
 
