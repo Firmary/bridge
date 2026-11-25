@@ -1,0 +1,4 @@
+# RoboRev settings for this repo. The review rules are in REVIEW.md, which RoboRev reads when review_guidelines is unset
+# (OpenQodex reads the same file). The agent, model and effort are set per machine in ~/.roborev/config.toml.
+# Docs and generated files are not reviewed.
+exclude_patterns = ["*.md", "bin/", "dist/", "cmd/firmary-link/rsrc_windows_*.syso", "internal/protocol/testdata/", "go.sum"]

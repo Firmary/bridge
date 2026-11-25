@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx -y openqodex@0.24.0 hook check",
+            "statusMessage": "OpenQodex: checking for a review before push"
+          }
+        ]
+      }
+    ]
+  }
+}
